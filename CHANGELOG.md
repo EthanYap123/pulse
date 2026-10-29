@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `docs/ARCHITECTURE.md` with system diagram, check scheduling, incident state machine, duplicate-alert prevention and the status-page data path.
 - `docs/PRD.md` with personas, user stories, acceptance criteria and non-functional requirements.
 - `docs/COSTS.md` with free-tier limits, Neon compute/storage budgets and resulting caps.
 - Repository skeleton: README, MIT license, `.gitignore`, changelog.
