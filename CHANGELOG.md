@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Four ADRs (cron vs queue, retention and rollups, multi-tenancy, Durable Object buffering) and design links, key decisions and trade-offs in the README.
 - `docs/ERD.md` and `docs/API.md` covering every table, endpoint and user story.
 - `docs/ARCHITECTURE.md` with system diagram, check scheduling, incident state machine, duplicate-alert prevention and the status-page data path.
 - `docs/PRD.md` with personas, user stories, acceptance criteria and non-functional requirements.
