@@ -117,13 +117,13 @@ stateDiagram-v2
   Up --> Failing: failure (1 of N)
   Failing --> Failing: failure (count < N)
   Failing --> Up: success (blip, no incident)
-  Failing --> Down: failure count reaches N / event: incident_opened
+  Failing --> Down: failure count reaches N (opens incident)
   Down --> Down: failure
   Down --> Recovering: success (1 of 2)
   Recovering --> Down: failure
-  Recovering --> Up: 2nd success / event: incident_resolved
+  Recovering --> Up: 2nd success (resolves incident)
   Up --> Paused: paused
-  Down --> Paused: paused / event: incident_resolved (paused)
+  Down --> Paused: paused (resolves incident)
   Paused --> Pending: resumed
 ```
 
