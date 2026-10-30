@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.wrangler
+**/coverage
+**/generated
+**/.env
+**/.env.*
+!**/.env.example
+**/.dev.vars
+.git
+.github
+.husky
+docs
+*.md
