@@ -19,13 +19,18 @@ Repository settings that go with it:
 
 - Allow squash merging only (disable merge commits and rebase merging).
 - Automatically delete head branches after merge.
+- Squash commit title = PR title, message = PR body.
+
+## Status
+
+Applied on 2026-10-30 (ruleset id `26173942`). A direct push to `main` is rejected with "Changes must be made through a pull request" and "Required status check `CI passed` is expected".
 
 ## Applying them
 
 Rulesets are free for public repositories. With the GitHub CLI, from the repository root:
 
 ```bash
-gh repo edit EthanYap123/pulse --enable-merge-commit=false --enable-rebase-merge=false --enable-squash-merge --delete-branch-on-merge
+gh api repos/EthanYap123/pulse --method PATCH -F allow_merge_commit=false -F allow_rebase_merge=false -F allow_squash_merge=true -F delete_branch_on_merge=true -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY
 ```
 
 ```bash
