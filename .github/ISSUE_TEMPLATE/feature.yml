@@ -1,0 +1,25 @@
+name: Feature
+description: New behaviour, ideally tied to a user story in docs/PRD.md.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: input
+    id: story
+    attributes:
+      label: User story
+      placeholder: "US-04, or: As a ..., I want ... so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - Given ..., when ..., then ...
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: Free-tier impact
+      description: Does this add requests, subrequests, Neon wake-ups or storage? See docs/COSTS.md.

@@ -61,6 +61,10 @@ Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:inte
 | Render: sleeps after 15 min idle      | Dashboard's first load can take ~1 minute; status pages are unaffected   |
 | Cron granularity                      | Fixed 5-minute interval; outages detected in 10-15 minutes               |
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, commit and PR workflow, and [docs/BRANCH_PROTECTION.md](docs/BRANCH_PROTECTION.md) for the rules on `main`.
+
 ## License
 
 [MIT](LICENSE)
