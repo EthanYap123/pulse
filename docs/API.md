@@ -45,9 +45,10 @@ Two HTTP surfaces exist:
 
 ### Health
 
-| Method | Path      | Auth | Response                                                                                                      |
-| ------ | --------- | ---- | ------------------------------------------------------------------------------------------------------------- |
-| GET    | `/health` | none | `200 { "status": "ok", "db": "ok" \| "asleep", "version": "1.0.0" }` (does not wake Neon; reports pool state) |
+| Method | Path         | Auth | Response                                                                                                                                         |
+| ------ | ------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/health`    | none | `200 { "status": "ok", "version": "1.0.0" }`. Never touches the database, so Render and Docker health probes don't wake Neon.                    |
+| GET    | `/health/db` | none | `200 { "status": "ok", "db": "ok", "version" }` or `503` with `"db": "error"`. Runs `SELECT 1`, so it **wakes Neon**; for CI and debugging only. |
 
 ### Auth
 

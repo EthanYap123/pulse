@@ -19,3 +19,7 @@ All notable changes to this project are documented here. The format follows
 - `docs/PRD.md` with personas, user stories, acceptance criteria and non-functional requirements.
 - `docs/COSTS.md` with free-tier limits, Neon compute/storage budgets and resulting caps.
 - Repository skeleton: README, MIT license, `.gitignore`, changelog.
+
+### Fixed
+
+- `/health` no longer queries the database (new `/health/db` does); web builds receive `API_URL`/`CHECKER_URL` under Turborepo strict env mode; Prisma config no longer falls back to a placeholder database URL.
