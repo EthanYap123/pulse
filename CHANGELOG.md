@@ -22,4 +22,5 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- `next dev` no longer leaves changes in git (`next-env.d.ts` untracked, Next's `agentRules` off).
 - `/health` no longer queries the database (new `/health/db` does); web builds receive `API_URL`/`CHECKER_URL` under Turborepo strict env mode; Prisma config no longer falls back to a placeholder database URL.
