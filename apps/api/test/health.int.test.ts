@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createPrisma } from "../src/db.js";
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error("Integration tests need DATABASE_URL (see apps/api/.env.example)");
+  throw new Error("Integration tests need TEST_DATABASE_URL or DATABASE_URL (see apps/api/.env.example)");
 }
 
 const prisma = createPrisma(databaseUrl);

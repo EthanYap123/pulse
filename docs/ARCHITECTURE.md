@@ -188,7 +188,7 @@ Neon is the source of truth for monitor config; shards hold a copy.
 | Checker | `wrangler dev --test-scheduled` | Worker env `staging` | Worker env `production` |
 | Database | Docker Compose Postgres 17 | Neon branch `staging` | Neon branch `main` |
 
-Neon's serverless driver talks HTTP/WebSocket, not the Postgres wire protocol, so it can't reach a plain Postgres container directly. Phase 1 picks between adding an HTTP/WebSocket proxy to Docker Compose or putting the checker's queries behind a small interface with a `pg` implementation for local dev and tests.
+Neon's serverless driver talks HTTP/WebSocket, not the Postgres wire protocol, so it can't reach a plain Postgres container. **Decision (Phase 1):** the checker's queries go through a small `CheckerDb` interface with two implementations, picked by the `DB_DRIVER` variable: `neon-http` (Neon's serverless driver, used in Cloudflare) and `pg` (node-postgres over TCP, which runs in workerd with `nodejs_compat`, used with `wrangler dev` and in integration tests against Docker Compose Postgres). Both share the same SQL, so tests cover the queries that run in production.
 
 ## 6. Failure modes
 
