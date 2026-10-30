@@ -33,6 +33,8 @@ pnpm dev
 | API     | http://localhost:4000/health                                                     |
 | Checker | http://localhost:8787/health (trigger a tick: http://localhost:8787/__scheduled) |
 
+Compose publishes Postgres on host port **5434** (not 5432) so it doesn't clash with a native Postgres install or other local projects; set `PULSE_DB_PORT` to use another port and update the URLs in your env files to match.
+
 Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` (needs Postgres; uses `TEST_DATABASE_URL`, falling back to `DATABASE_URL`).
 
 ## Design docs

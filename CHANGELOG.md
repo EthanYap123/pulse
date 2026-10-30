@@ -22,5 +22,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Local Compose Postgres is published on port 5434 (override with `PULSE_DB_PORT`) to avoid clashing with a native install.
 - `next dev` no longer leaves changes in git (`next-env.d.ts` untracked, Next's `agentRules` off).
 - `/health` no longer queries the database (new `/health/db` does); web builds receive `API_URL`/`CHECKER_URL` under Turborepo strict env mode; Prisma config no longer falls back to a placeholder database URL.
