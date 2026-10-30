@@ -1,0 +1,14 @@
+name = "pulse-checker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Every 5 minutes (see docs/adr/0001-worker-cron-instead-of-a-queue.md).
+[triggers]
+crons = ["*/5 * * * *"]
+
+[observability]
+enabled = true
+
+# Durable Object shards, staging/production environments and secrets are
+# added in later phases. Local secrets go in .dev.vars (see .dev.vars.example).

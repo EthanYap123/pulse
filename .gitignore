@@ -38,3 +38,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Generated Prisma client
+apps/api/src/generated/
