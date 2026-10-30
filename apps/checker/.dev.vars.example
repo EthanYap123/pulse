@@ -1,0 +1,15 @@
+# Copy to apps/checker/.dev.vars for `wrangler dev`. Never commit the real file.
+# In Cloudflare these are set with `wrangler secret put <NAME>`.
+
+ENVIRONMENT=local
+
+# Local Postgres. With DB_DRIVER=pg the Worker uses node-postgres over TCP
+# (works in workerd with nodejs_compat); in Cloudflare it uses Neon's HTTP driver.
+DB_DRIVER=pg
+DATABASE_URL=postgresql://pulse:pulse@localhost:5432/pulse
+
+# Added in later phases:
+# CHECKER_HMAC_SECRET=      # must match apps/api/.env
+# ENCRYPTION_KEY=           # must match apps/api/.env
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_WEBHOOK_SECRET=

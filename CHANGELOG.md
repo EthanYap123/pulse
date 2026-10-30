@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Docker Compose Postgres 17 for local development and example env files for every app.
 - Monorepo scaffold: pnpm workspaces, Turborepo, `apps/api`, `apps/checker`, `apps/web`, `packages/shared`.
 - Four ADRs (cron vs queue, retention and rollups, multi-tenancy, Durable Object buffering) and design links, key decisions and trade-offs in the README.
 - `docs/ERD.md` and `docs/API.md` covering every table, endpoint and user story.

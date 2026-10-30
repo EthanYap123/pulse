@@ -14,6 +14,27 @@ Uptime monitoring with public status pages. Create monitors for URLs and API end
 
 Everything runs on free tiers with no card. See [`docs/COSTS.md`](docs/COSTS.md).
 
+## Run locally
+
+Needs Node 22 (see `.nvmrc`), pnpm 10 (`corepack enable`), and Docker for Postgres.
+
+```bash
+pnpm install
+docker compose up -d
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local
+cp apps/checker/.dev.vars.example apps/checker/.dev.vars
+pnpm dev
+```
+
+| App | URL |
+| --- | --- |
+| Web | http://localhost:3000 |
+| API | http://localhost:4000/health |
+| Checker | http://localhost:8787/health (trigger a tick: http://localhost:8787/__scheduled) |
+
+Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` (needs Postgres; uses `TEST_DATABASE_URL`, falling back to `DATABASE_URL`).
+
 ## Design docs
 
 - [Product requirements](docs/PRD.md)
