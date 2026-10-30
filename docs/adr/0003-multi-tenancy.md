@@ -33,8 +33,8 @@ Pulse is multi-user: each user's projects, monitors, channels and history must b
 
 ## Alternatives considered
 
-| Option | Why not (for v1) |
-| --- | --- |
+| Option                                                         | Why not (for v1)                                                                                                                                                                                      |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Postgres Row-Level Security with `SET app.user_id` per request | Strong guarantee, but Prisma needs a transaction per request to set the session variable, which adds latency and complexity; the checker would need `BYPASSRLS`. Worth revisiting if teams are added. |
-| Schema per tenant | Migrations multiply per tenant; Prisma support is awkward; wasteful at this scale |
-| Database (or Neon branch) per tenant | Neon free allows 10 branches; each would draw on the same compute budget |
+| Schema per tenant                                              | Migrations multiply per tenant; Prisma support is awkward; wasteful at this scale                                                                                                                     |
+| Database (or Neon branch) per tenant                           | Neon free allows 10 branches; each would draw on the same compute budget                                                                                                                              |

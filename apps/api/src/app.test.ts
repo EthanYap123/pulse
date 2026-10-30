@@ -8,7 +8,10 @@ function fakePrisma(queryRaw: () => Promise<unknown>): PrismaClient {
 
 describe("GET /health", () => {
   it("reports ok when the database answers", async () => {
-    const app = buildApp({ prisma: fakePrisma(async () => [{ "?column?": 1 }]), version: "test" });
+    const app = buildApp({
+      prisma: fakePrisma(() => Promise.resolve([{ "?column?": 1 }])),
+      version: "test",
+    });
     const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test" });
@@ -16,9 +19,7 @@ describe("GET /health", () => {
 
   it("still answers when the database is unreachable", async () => {
     const app = buildApp({
-      prisma: fakePrisma(async () => {
-        throw new Error("connection refused");
-      }),
+      prisma: fakePrisma(() => Promise.reject(new Error("connection refused"))),
       version: "test",
     });
     const res = await app.inject({ method: "GET", url: "/health" });

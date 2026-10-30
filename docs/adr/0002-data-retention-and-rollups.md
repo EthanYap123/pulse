@@ -20,11 +20,11 @@ Nobody needs individual checks from last month.
 
 Three tiers, each with a fixed retention:
 
-| Table | Grain | Kept | Used by |
-| --- | --- | --- | --- |
-| `check_results` | one row per check | **7 days** | 24 h chart; source for rollups |
-| `check_rollups_hourly` | monitor x hour: checks, failures, avg/p95/max latency | **30 days** | 7 d / 30 d charts |
-| `check_rollups_daily` | monitor x UTC day: checks, failures, avg/p95 latency | **400 days** | 90-day bars, uptime %, yearly view later |
+| Table                  | Grain                                                 | Kept         | Used by                                  |
+| ---------------------- | ----------------------------------------------------- | ------------ | ---------------------------------------- |
+| `check_results`        | one row per check                                     | **7 days**   | 24 h chart; source for rollups           |
+| `check_rollups_hourly` | monitor x hour: checks, failures, avg/p95/max latency | **30 days**  | 7 d / 30 d charts                        |
+| `check_rollups_daily`  | monitor x UTC day: checks, failures, avg/p95 latency  | **400 days** | 90-day bars, uptime %, yearly view later |
 
 Resolved incidents and their alert deliveries are kept **400 days**.
 
@@ -54,10 +54,10 @@ Every step is an `INSERT ... ON CONFLICT DO UPDATE` or a range `DELETE`, so runn
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Keep all raw checks | ~21M rows/year, over 1 GB within months |
-| TimescaleDB continuous aggregates | Not available on Neon |
+| Option                                              | Why not                                                                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Keep all raw checks                                 | ~21M rows/year, over 1 GB within months                                                                                |
+| TimescaleDB continuous aggregates                   | Not available on Neon                                                                                                  |
 | Partitioned `check_results` by day, drop partitions | Cleaner deletes, but Prisma doesn't manage partitions and the volume doesn't need it yet. Revisit if deletes get slow. |
-| Store only daily rollups | Loses the latency charts the dashboard needs |
-| Run the rollup with `pg_cron` | Would wake Neon on its own schedule; better to piggyback on the flush that already wakes it |
+| Store only daily rollups                            | Loses the latency charts the dashboard needs                                                                           |
+| Run the rollup with `pg_cron`                       | Would wake Neon on its own schedule; better to piggyback on the flush that already wakes it                            |

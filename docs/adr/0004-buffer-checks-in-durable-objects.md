@@ -49,11 +49,11 @@ Estimated Neon use: ~15.5 CU-hours/month for production flushes, the same for st
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Write to Neon every tick | ~182 CU-hours/month vs 100 free |
-| Check every 15+ minutes so Neon can sleep between ticks | Still ~40% awake (~73 CU-hours) before any dashboard or staging use, and 45-minute outage detection is too slow |
-| Buffer in Workers KV | Free plan allows 1,000 writes/day and 1 write/second per key, and KV is eventually consistent, so counters read on the next tick could be stale |
-| Cloudflare D1 as the main database | Free and generous, but SQLite instead of Postgres, and the brief asks for Postgres + Prisma on Neon |
-| Status pages read Neon from Vercel with ISR | Every cache miss wakes Neon for ≥ 5 minutes; popular pages could keep it awake all month |
-| Status pages go through the Render API | Cold start of ~1 minute for visitors, and the API still wakes Neon |
+| Option                                                  | Why not                                                                                                                                         |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Write to Neon every tick                                | ~182 CU-hours/month vs 100 free                                                                                                                 |
+| Check every 15+ minutes so Neon can sleep between ticks | Still ~40% awake (~73 CU-hours) before any dashboard or staging use, and 45-minute outage detection is too slow                                 |
+| Buffer in Workers KV                                    | Free plan allows 1,000 writes/day and 1 write/second per key, and KV is eventually consistent, so counters read on the next tick could be stale |
+| Cloudflare D1 as the main database                      | Free and generous, but SQLite instead of Postgres, and the brief asks for Postgres + Prisma on Neon                                             |
+| Status pages read Neon from Vercel with ISR             | Every cache miss wakes Neon for ≥ 5 minutes; popular pages could keep it awake all month                                                        |
+| Status pages go through the Render API                  | Cold start of ~1 minute for visitors, and the API still wakes Neon                                                                              |

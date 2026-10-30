@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- ESLint 10, Prettier, Husky pre-commit (lint-staged) and commit-msg (commitlint) hooks.
 - Docker Compose Postgres 17 for local development and example env files for every app.
 - Monorepo scaffold: pnpm workspaces, Turborepo, `apps/api`, `apps/checker`, `apps/web`, `packages/shared`.
 - Four ADRs (cron vs queue, retention and rollups, multi-tenancy, Durable Object buffering) and design links, key decisions and trade-offs in the README.

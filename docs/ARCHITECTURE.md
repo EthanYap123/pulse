@@ -6,13 +6,13 @@
 
 Pulse has four deployable parts and one shared package:
 
-| Part | Runs on | Job |
-| --- | --- | --- |
-| `apps/web` | Vercel (Hobby) | Next.js dashboard for signed-in users and public status pages |
-| `apps/api` | Render free web service (Docker image from GHCR) | Fastify + Prisma REST API: auth, projects, monitors, channels, history |
-| `apps/checker` | Cloudflare Workers + Durable Objects (Free) | Cron-driven checks, incident detection, alerts, hourly flush and rollups, live status and status-page snapshots |
-| Postgres | Neon (Free) | Source of truth for accounts, config, history and incidents |
-| `packages/shared` | Imported by all three apps | Types, zod schemas, the check/incident state machine, uptime maths |
+| Part              | Runs on                                          | Job                                                                                                             |
+| ----------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | Vercel (Hobby)                                   | Next.js dashboard for signed-in users and public status pages                                                   |
+| `apps/api`        | Render free web service (Docker image from GHCR) | Fastify + Prisma REST API: auth, projects, monitors, channels, history                                          |
+| `apps/checker`    | Cloudflare Workers + Durable Objects (Free)      | Cron-driven checks, incident detection, alerts, hourly flush and rollups, live status and status-page snapshots |
+| Postgres          | Neon (Free)                                      | Source of truth for accounts, config, history and incidents                                                     |
+| `packages/shared` | Imported by all three apps                       | Types, zod schemas, the check/incident state machine, uptime maths                                              |
 
 The design rule that shapes everything: **Neon must sleep most of the time** (100 CU-hours/month, see [COSTS.md](COSTS.md)), and **public pages must not wait for Render to wake up**.
 
@@ -181,26 +181,26 @@ Neon is the source of truth for monitor config; shards hold a copy.
 
 ## 5. Environments
 
-| | Local | Staging | Production |
-| --- | --- | --- | --- |
-| Web | `next dev` | Vercel preview deployments | Vercel production |
-| API | `tsx watch` against Docker Compose Postgres | Render service `pulse-api-staging` | Render service `pulse-api` |
-| Checker | `wrangler dev --test-scheduled` | Worker env `staging` | Worker env `production` |
-| Database | Docker Compose Postgres 17 | Neon branch `staging` | Neon branch `main` |
+|          | Local                                       | Staging                            | Production                 |
+| -------- | ------------------------------------------- | ---------------------------------- | -------------------------- |
+| Web      | `next dev`                                  | Vercel preview deployments         | Vercel production          |
+| API      | `tsx watch` against Docker Compose Postgres | Render service `pulse-api-staging` | Render service `pulse-api` |
+| Checker  | `wrangler dev --test-scheduled`             | Worker env `staging`               | Worker env `production`    |
+| Database | Docker Compose Postgres 17                  | Neon branch `staging`              | Neon branch `main`         |
 
 Neon's serverless driver talks HTTP/WebSocket, not the Postgres wire protocol, so it can't reach a plain Postgres container. **Decision (Phase 1):** the checker's queries go through a small `CheckerDb` interface with two implementations, picked by the `DB_DRIVER` variable: `neon-http` (Neon's serverless driver, used in Cloudflare) and `pg` (node-postgres over TCP, which runs in workerd with `nodejs_compat`, used with `wrangler dev` and in integration tests against Docker Compose Postgres). Both share the same SQL, so tests cover the queries that run in production.
 
 ## 6. Failure modes
 
-| Failure | Effect | Handling |
-| --- | --- | --- |
-| Render API asleep | Dashboard first load ~1 min | "Waking up" UI; status pages unaffected |
-| Neon out of CU-hours | No new history, no dashboard, incidents can't be written | Shards keep checking and keep buffering (up to 7 days of buffer fits easily in 1 GB); status pages show live state from shards plus the last snapshot; alerts still send from the shard state with an `incident_pending_db` marker |
-| Neon cold start (~1 s) | Slower flush | Driver retry with backoff |
-| Checker tick overruns | Skipped tick | `tick_started_at` guard, logged to Sentry |
-| Discord/Telegram down | Alerts delayed | Outbox retries for up to ~2 hours |
-| Missed config sync | Up to 1 hour stale config | Hourly reconcile |
-| Cloudflare cron incident | No checks | Out of our control; documented. A future "watchdog" could check the last flush time from the API. |
+| Failure                  | Effect                                                   | Handling                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render API asleep        | Dashboard first load ~1 min                              | "Waking up" UI; status pages unaffected                                                                                                                                                                                            |
+| Neon out of CU-hours     | No new history, no dashboard, incidents can't be written | Shards keep checking and keep buffering (up to 7 days of buffer fits easily in 1 GB); status pages show live state from shards plus the last snapshot; alerts still send from the shard state with an `incident_pending_db` marker |
+| Neon cold start (~1 s)   | Slower flush                                             | Driver retry with backoff                                                                                                                                                                                                          |
+| Checker tick overruns    | Skipped tick                                             | `tick_started_at` guard, logged to Sentry                                                                                                                                                                                          |
+| Discord/Telegram down    | Alerts delayed                                           | Outbox retries for up to ~2 hours                                                                                                                                                                                                  |
+| Missed config sync       | Up to 1 hour stale config                                | Hourly reconcile                                                                                                                                                                                                                   |
+| Cloudflare cron incident | No checks                                                | Out of our control; documented. A future "watchdog" could check the last flush time from the API.                                                                                                                                  |
 
 ## 7. Why each part lives where it does
 
