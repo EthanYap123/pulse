@@ -42,3 +42,7 @@ pnpm-debug.log*
 # Generated Prisma client
 apps/api/src/generated/
 .turbo/
+
+# Next.js generated files
+apps/web/next-env.d.ts
+apps/web/AGENTS.md
