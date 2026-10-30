@@ -1,0 +1,19 @@
+name: Chore
+description: Tooling, CI, dependencies, docs or refactoring with no user-facing change.
+title: "chore: "
+labels: [chore]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      placeholder: |
+        - ...
+    validations:
+      required: true
