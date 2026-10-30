@@ -21,9 +21,9 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("GET /health against Postgres", () => {
+describe("GET /health/db against Postgres", () => {
   it("reaches the real database", async () => {
-    const res = await app.inject({ method: "GET", url: "/health" });
+    const res = await app.inject({ method: "GET", url: "/health/db" });
     expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test" });
   });
 });
