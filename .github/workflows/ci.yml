@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  HUSKY: 0
+
+jobs:
+  quality:
+    name: Lint, format and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm format:check
+      - run: pnpm turbo run lint typecheck
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run test
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: packages/*/coverage
+          if-no-files-found: ignore
+
+  integration:
+    name: Integration tests (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image and credentials as docker-compose.yml.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pulse
+          POSTGRES_PASSWORD: pulse
+          POSTGRES_DB: pulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pulse -d pulse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://pulse:pulse@localhost:5432/pulse_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run test:integration
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run build
+
+  docker:
+    name: API Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          load: true
+          tags: pulse-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the container
+        run: |
+          docker run -d --name api -p 4000:4000 \
+            -e DATABASE_URL=postgresql://nobody:nothing@127.0.0.1:1/none \
+            pulse-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs api
+          exit 1
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Single required check for branch protection.
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: [quality, test, integration, build, docker, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All CI jobs passed"
