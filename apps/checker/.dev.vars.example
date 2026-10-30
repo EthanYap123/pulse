@@ -6,7 +6,7 @@ ENVIRONMENT=local
 # Local Postgres. With DB_DRIVER=pg the Worker uses node-postgres over TCP
 # (works in workerd with nodejs_compat); in Cloudflare it uses Neon's HTTP driver.
 DB_DRIVER=pg
-DATABASE_URL=postgresql://pulse:pulse@localhost:5432/pulse
+DATABASE_URL=postgresql://pulse:pulse@localhost:5434/pulse
 
 # Added in later phases:
 # CHECKER_HMAC_SECRET=      # must match apps/api/.env
