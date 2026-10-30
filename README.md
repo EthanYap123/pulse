@@ -27,10 +27,10 @@ cp apps/checker/.dev.vars.example apps/checker/.dev.vars
 pnpm dev
 ```
 
-| App | URL |
-| --- | --- |
-| Web | http://localhost:3000 |
-| API | http://localhost:4000/health |
+| App     | URL                                                                              |
+| ------- | -------------------------------------------------------------------------------- |
+| Web     | http://localhost:3000                                                            |
+| API     | http://localhost:4000/health                                                     |
 | Checker | http://localhost:8787/health (trigger a tick: http://localhost:8787/__scheduled) |
 
 Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` (needs Postgres; uses `TEST_DATABASE_URL`, falling back to `DATABASE_URL`).
@@ -53,13 +53,13 @@ Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:inte
 
 ## Free-tier trade-offs
 
-| Limit | Trade-off |
-| --- | --- |
-| Worker: 50 subrequests per invocation | 5 shards x 40 checks = 200 monitors max; 10 per user |
-| Neon: 100 CU-hours/month | History in Postgres lags up to 1 hour; live status comes from the Worker |
-| Neon: 1 GB storage | Old raw checks are rolled up and deleted |
-| Render: sleeps after 15 min idle | Dashboard's first load can take ~1 minute; status pages are unaffected |
-| Cron granularity | Fixed 5-minute interval; outages detected in 10-15 minutes |
+| Limit                                 | Trade-off                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------ |
+| Worker: 50 subrequests per invocation | 5 shards x 40 checks = 200 monitors max; 10 per user                     |
+| Neon: 100 CU-hours/month              | History in Postgres lags up to 1 hour; live status comes from the Worker |
+| Neon: 1 GB storage                    | Old raw checks are rolled up and deleted                                 |
+| Render: sleeps after 15 min idle      | Dashboard's first load can take ~1 minute; status pages are unaffected   |
+| Cron granularity                      | Fixed 5-minute interval; outages detected in 10-15 minutes               |
 
 ## License
 

@@ -38,8 +38,12 @@ describe("classifyCheck", () => {
 
   it("uses a custom expected range", () => {
     const expected = { min: 401, max: 401 };
-    expect(classifyCheck({ kind: "response", statusCode: 401, latencyMs: 10 }, expected).ok).toBe(true);
-    expect(classifyCheck({ kind: "response", statusCode: 200, latencyMs: 10 }, expected).ok).toBe(false);
+    expect(classifyCheck({ kind: "response", statusCode: 401, latencyMs: 10 }, expected).ok).toBe(
+      true,
+    );
+    expect(classifyCheck({ kind: "response", statusCode: 200, latencyMs: 10 }, expected).ok).toBe(
+      false,
+    );
   });
 
   it("keeps the network error and drops the status code", () => {

@@ -5,7 +5,7 @@ export type Env = {
 };
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  fetch(request: Request, env: Env): Response {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
       return Response.json({ status: "ok", environment: env.ENVIRONMENT ?? "local" });
@@ -14,7 +14,7 @@ export default {
   },
 
   // The check loop arrives in Phase 2. For now the tick only proves the cron fires.
-  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+  scheduled(controller: ScheduledController, env: Env): void {
     console.log(
       JSON.stringify({
         msg: "tick",

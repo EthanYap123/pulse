@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+**/dist
+**/.next
+**/.wrangler
+**/coverage
+**/generated
+**/next-env.d.ts
+CHANGELOG.md

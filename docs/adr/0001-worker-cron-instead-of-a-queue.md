@@ -43,10 +43,10 @@ Cloudflare Workers' free plan includes Cron Triggers (5 per account) that run on
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| BullMQ + free hosted Redis + worker on Render | Render worker sleeps; Redis command quotas; more moving parts |
-| GitHub Actions `schedule` | Minimum 5 min but often delayed by 10+ minutes under load; not meant for production scheduling; no state |
-| Vercel Cron Jobs | Hobby crons are limited and imprecise; functions have short time limits; would still need state somewhere |
-| `pg_cron` in Neon | Would keep Neon awake every 5 minutes, which breaks the compute budget (see ADR-0004) |
-| Cloudflare Queues | Not needed: Durable Object state covers retries, and it adds another product to learn and budget for |
+| Option                                        | Why not                                                                                                   |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| BullMQ + free hosted Redis + worker on Render | Render worker sleeps; Redis command quotas; more moving parts                                             |
+| GitHub Actions `schedule`                     | Minimum 5 min but often delayed by 10+ minutes under load; not meant for production scheduling; no state  |
+| Vercel Cron Jobs                              | Hobby crons are limited and imprecise; functions have short time limits; would still need state somewhere |
+| `pg_cron` in Neon                             | Would keep Neon awake every 5 minutes, which breaks the compute budget (see ADR-0004)                     |
+| Cloudflare Queues                             | Not needed: Durable Object state covers retries, and it adds another product to learn and budget for      |
