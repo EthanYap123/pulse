@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Accounts: sign-up, login, rotating refresh tokens with reuse detection, logout and `/v1/me`.
 - Database schema and first migration for users, refresh tokens, projects, monitors and check results.
 - Contribution guide, PR and issue templates, and a recommended branch-protection ruleset for `main`.
 - CI on every PR: lint, format, typecheck, unit and integration tests, build, API Docker image build and smoke test, gitleaks.
