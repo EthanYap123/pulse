@@ -1,4 +1,5 @@
-// Models arrive in Phase 2 (see docs/ERD.md).
+// Phase 2 tables from docs/ERD.md. Incidents, rollups and alert tables arrive in Phase 3.
+// CHECK constraints live in the migration SQL (Prisma doesn't model them).
 
 generator client {
   provider            = "prisma-client"
@@ -9,4 +10,124 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum HttpMethod {
+  GET
+  HEAD
+
+  @@map("http_method")
+}
+
+enum MonitorStatus {
+  pending
+  up
+  failing
+  down
+  recovering
+  paused
+
+  @@map("monitor_status")
+}
+
+enum CheckError {
+  status
+  timeout
+  dns
+  tls
+  connection
+
+  @@map("check_error")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Stored lowercased; uniqueness is case-insensitive because of that.
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  projects      Project[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// All tokens descended from one login share a family; reuse revokes the family.
+  familyId   String    @map("family_id") @db.Uuid
+  /// SHA-256 of the token. The token itself is never stored.
+  tokenHash  Bytes     @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedBy String?   @map("replaced_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Project {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId    String   @map("owner_id") @db.Uuid
+  name       String
+  slug       String   @unique
+  isPublic   Boolean  @default(true) @map("is_public")
+  statusNote String?  @map("status_note")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  monitors Monitor[]
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model Monitor {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId         String        @map("project_id") @db.Uuid
+  name              String
+  url               String
+  method            HttpMethod    @default(GET)
+  expectedStatusMin Int           @default(200) @map("expected_status_min") @db.SmallInt
+  expectedStatusMax Int           @default(399) @map("expected_status_max") @db.SmallInt
+  timeoutMs         Int           @default(8000) @map("timeout_ms") @db.SmallInt
+  failureThreshold  Int           @default(3) @map("failure_threshold") @db.SmallInt
+  /// Header name -> encrypted value (AES-256-GCM). Values are never returned by the API.
+  headers           Json          @default("{}")
+  isPaused          Boolean       @default(false) @map("is_paused")
+  showOnStatusPage  Boolean       @default(true) @map("show_on_status_page")
+  /// Checker shard 0-4, fixed at creation.
+  shard             Int           @db.SmallInt
+  lastStatus        MonitorStatus @default(pending) @map("last_status")
+  lastCheckedAt     DateTime?     @map("last_checked_at") @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checkResults CheckResult[]
+
+  @@index([projectId])
+  @@index([shard])
+  @@map("monitors")
+}
+
+model CheckResult {
+  monitorId  String      @map("monitor_id") @db.Uuid
+  checkedAt  DateTime    @map("checked_at") @db.Timestamptz(3)
+  ok         Boolean
+  statusCode Int?        @map("status_code") @db.SmallInt
+  latencyMs  Int?        @map("latency_ms")
+  error      CheckError?
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@id([monitorId, checkedAt])
+  @@map("check_results")
 }
