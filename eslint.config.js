@@ -32,6 +32,31 @@ export default tseslint.config(
     },
   },
   {
+    // Tenant isolation: only repositories talk to Prisma (docs/adr/0003-multi-tenancy.md).
+    files: ["apps/api/src/**/*.ts"],
+    ignores: [
+      "apps/api/src/repositories/**",
+      "apps/api/src/db.ts",
+      "apps/api/src/app.ts",
+      "apps/api/src/server.ts",
+      "apps/api/src/**/*.test.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/generated/prisma/**", "**/db.js"],
+              message:
+                "Go through src/repositories so every query is scoped to its owner (ADR-0003).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
     ...tseslint.configs.disableTypeChecked,
   },

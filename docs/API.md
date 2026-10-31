@@ -117,7 +117,7 @@ type Monitor = Omit<MonitorInput, "headers"> & {
   projectId: string;
   isPaused: boolean;
   headerNames: string[]; // values are never returned
-  syncState: "synced" | "pending"; // checker config sync
+  syncState: "synced" | "pending"; // checker config sync (added with the checker, Phase 2 §5)
   createdAt: string;
   updatedAt: string;
 };
@@ -143,6 +143,8 @@ type LatencyPoint = {
 
 type DailyUptime = { day: string; uptimePct: number | null; checks: number };
 ```
+
+Until the checker is connected (Phase 2 §5), `status` comes from the last value stored in Postgres, `statusSource` is always `"last_flush"`, `lastLatencyMs` and `openIncidentId` are `null`, and `syncState` is omitted.
 
 ### Incidents
 
