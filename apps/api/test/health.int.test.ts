@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
+import { testConfig } from "./helpers/config.js";
 import { createTestPrisma } from "./helpers/db.js";
 
 const prisma = createTestPrisma();
-const app = buildApp({ prisma, version: "test" });
+const app = buildApp({ prisma, config: testConfig });
 
 beforeAll(async () => {
   await app.ready();

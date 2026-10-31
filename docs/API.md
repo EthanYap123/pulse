@@ -34,8 +34,10 @@ Two HTTP surfaces exist:
 | 400    | `bad_request`         | Malformed JSON                                                            |
 | 401    | `unauthenticated`     | Missing/expired access token                                              |
 | 401    | `invalid_credentials` | Wrong email or password (same message for both)                           |
+| 401    | `session_expired`     | Refresh token missing, expired, unknown or reused (cookie is cleared)     |
 | 404    | `not_found`           | Missing or not yours                                                      |
 | 409    | `conflict`            | Duplicate slug                                                            |
+| 409    | `signup_failed`       | Sign-up with an email that already has an account (deliberately vague)    |
 | 409    | `limit_reached`       | Per-user or global cap hit (`limit`, `max` fields included)               |
 | 422    | `validation_failed`   | zod validation errors, including SSRF-blocked URLs                        |
 | 429    | `rate_limited`        | Too many requests (`Retry-After` header)                                  |

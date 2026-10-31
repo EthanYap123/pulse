@@ -1,17 +1,10 @@
 import { buildApp } from "./app.js";
+import { loadConfig } from "./config.js";
 import { createPrisma } from "./db.js";
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is not set");
-}
-
-const prisma = createPrisma(databaseUrl);
-const app = buildApp({
-  prisma,
-  version: process.env.APP_VERSION ?? "dev",
-  logger: true,
-});
+const config = loadConfig(process.env);
+const prisma = createPrisma(config.databaseUrl);
+const app = buildApp({ prisma, config, logger: true });
 
 const shutdown = async () => {
   await app.close();
@@ -21,4 +14,4 @@ const shutdown = async () => {
 process.on("SIGTERM", () => void shutdown());
 process.on("SIGINT", () => void shutdown());
 
-await app.listen({ host: "0.0.0.0", port: Number(process.env.PORT ?? 4000) });
+await app.listen({ host: "0.0.0.0", port: config.port });
