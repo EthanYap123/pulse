@@ -17,7 +17,7 @@ erDiagram
 
   users {
     uuid id PK
-    citext email UK
+    text email UK "stored lowercase"
     text password_hash "argon2id"
     timestamptz created_at
   }
@@ -121,6 +121,15 @@ erDiagram
   }
 ```
 
+## Migrations
+
+| Migration | Phase | Tables                                                                                           |
+| --------- | ----- | ------------------------------------------------------------------------------------------------ |
+| `init`    | 2     | `users`, `refresh_tokens`, `projects`, `monitors`, `check_results`                               |
+| (next)    | 3     | `incidents`, `check_rollups_hourly`, `check_rollups_daily`, `alert_channels`, `alert_deliveries` |
+
+Prisma doesn't model CHECK constraints, so they are appended to the migration SQL by hand. `prisma migrate diff` against the schema stays empty.
+
 ## Enums
 
 | Enum             | Values                                                          |
@@ -136,20 +145,21 @@ erDiagram
 
 ## Constraints and indexes
 
-| Table              | Constraint / index                                                                                                          | Why                                                                 |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `users`            | unique `email` (`citext`)                                                                                                   | Case-insensitive login                                              |
-| `refresh_tokens`   | unique `token_hash`; index `(family_id)`                                                                                    | Lookup on refresh; revoke a whole family on reuse                   |
-| `projects`         | unique `slug`; index `(owner_id)`                                                                                           | Public URL; tenant scoping                                          |
-| `monitors`         | index `(project_id)`; index `(shard) WHERE NOT is_paused`                                                                   | Dashboard list; hourly reconcile per shard                          |
-| `monitors`         | check `expected_status_min <= expected_status_max`, `timeout_ms BETWEEN 1000 AND 8000`, `failure_threshold BETWEEN 1 AND 5` | Mirrors the zod schema                                              |
-| `check_results`    | PK `(monitor_id, checked_at)`                                                                                               | Idempotent flush (`ON CONFLICT DO NOTHING`); range scans for charts |
-| `check_rollups_*`  | PK `(monitor_id, hour/day)`                                                                                                 | Idempotent upserts                                                  |
-| `incidents`        | **unique `(monitor_id) WHERE resolved_at IS NULL`**                                                                         | At most one open incident per monitor (duplicate-alert layer 2)     |
-| `incidents`        | index `(monitor_id, started_at DESC)`                                                                                       | Incident history                                                    |
-| `alert_deliveries` | **unique `(incident_id, channel_id, event)`**                                                                               | Idempotency key for the outbox (layer 3)                            |
-| `alert_deliveries` | index `(channel_id, event, sent_at DESC)`                                                                                   | Cooldown lookup (layer 4)                                           |
-| `alert_deliveries` | index `(state, next_attempt_at) WHERE state = 'pending'`                                                                    | Retry scan                                                          |
+| Table              | Constraint / index                                                                                                                                                     | Why                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `users`            | unique `email`; check `email = lower(email)`                                                                                                                           | Case-insensitive login without the `citext` extension: the API lowercases emails and the CHECK guarantees it             |
+| `refresh_tokens`   | unique `token_hash`; index `(family_id)`                                                                                                                               | Lookup on refresh; revoke a whole family on reuse                                                                        |
+| `projects`         | unique `slug`; index `(owner_id)`                                                                                                                                      | Public URL; tenant scoping                                                                                               |
+| `monitors`         | index `(project_id)`; index `(shard)`                                                                                                                                  | Dashboard list; hourly reconcile per shard (a plain index: Prisma can't model partial indexes and would try to drop one) |
+| `monitors`         | check `expected_status_min/max BETWEEN 100 AND 599` and `min <= max`, `timeout_ms BETWEEN 1000 AND 8000`, `failure_threshold BETWEEN 1 AND 5`, `shard BETWEEN 0 AND 4` | Mirrors the zod schema                                                                                                   |
+| `projects`         | check slug matches `^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`                                                                                                                 | Same rule as the API; 3-40 chars                                                                                         |
+| `check_results`    | PK `(monitor_id, checked_at)`                                                                                                                                          | Idempotent flush (`ON CONFLICT DO NOTHING`); range scans for charts                                                      |
+| `check_rollups_*`  | PK `(monitor_id, hour/day)`                                                                                                                                            | Idempotent upserts                                                                                                       |
+| `incidents`        | **unique `(monitor_id) WHERE resolved_at IS NULL`**                                                                                                                    | At most one open incident per monitor (duplicate-alert layer 2)                                                          |
+| `incidents`        | index `(monitor_id, started_at DESC)`                                                                                                                                  | Incident history                                                                                                         |
+| `alert_deliveries` | **unique `(incident_id, channel_id, event)`**                                                                                                                          | Idempotency key for the outbox (layer 3)                                                                                 |
+| `alert_deliveries` | index `(channel_id, event, sent_at DESC)`                                                                                                                              | Cooldown lookup (layer 4)                                                                                                |
+| `alert_deliveries` | index `(state, next_attempt_at) WHERE state = 'pending'`                                                                                                               | Retry scan                                                                                                               |
 
 All foreign keys from `monitors` downwards use `ON DELETE CASCADE`, so deleting a project or monitor removes its history (US-05). `users -> projects` also cascades, for account deletion.
 

@@ -17,7 +17,8 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["test/**/*.int.test.ts"],
-          setupFiles: ["./test/setup-env.ts"],
+          globalSetup: ["./test/global-setup.ts"],
+          setupFiles: ["dotenv/config"],
           // One database for the whole run; files must not race each other.
           fileParallelism: false,
         },
