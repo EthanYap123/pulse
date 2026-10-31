@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    // For the URL global, which Node, Workers and browsers all provide.
+    "lib": ["ES2023", "DOM"]
   },
   "include": ["src", "vitest.config.ts"]
 }

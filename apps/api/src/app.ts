@@ -1,10 +1,14 @@
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
+import { requireAuth } from "./auth/authenticate.js";
 import type { Config } from "./config.js";
+import { createCipher } from "./crypto.js";
 import type { PrismaClient } from "./db.js";
 import { registerErrorHandling } from "./errors.js";
 import { createRepositories } from "./repositories/index.js";
 import { authRoutes } from "./routes/auth.js";
+import { monitorRoutes } from "./routes/monitors.js";
+import { projectRoutes } from "./routes/projects.js";
 
 export type AppOptions = {
   prisma: PrismaClient;
@@ -14,7 +18,7 @@ export type AppOptions = {
 
 export function buildApp({ prisma, config, logger = false }: AppOptions): FastifyInstance {
   const app = Fastify({ logger });
-  const repos = createRepositories(prisma);
+  const repos = createRepositories(prisma, createCipher(config.encryptionKey));
 
   app.decorateRequest("userId", "");
   void app.register(cookie);
@@ -35,6 +39,14 @@ export function buildApp({ prisma, config, logger = false }: AppOptions): Fastif
   });
 
   authRoutes(app, repos, config);
+
+  // Everything registered in here needs a valid access token.
+  void app.register((scope, _opts, done) => {
+    scope.addHook("preHandler", requireAuth(config.jwtSecret));
+    projectRoutes(scope, repos);
+    monitorRoutes(scope, repos);
+    done();
+  });
 
   return app;
 }
