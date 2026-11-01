@@ -38,9 +38,3 @@ export function useData<T>(
   const state: DataState<T> = result?.key === key ? result.state : { status: "loading" };
   return { ...state, reload: () => setVersion((v) => v + 1) };
 }
-
-/** Reads a text field from a form, ignoring file inputs. */
-export function field(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === "string" ? value : "";
-}

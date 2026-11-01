@@ -9,7 +9,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ApiError } from "@/lib/api";
 import { formatMs, timeAgo } from "@/lib/format";
 import type { Monitor, Project } from "@/lib/types";
-import { field, useData } from "@/lib/use-data";
+import { field } from "@/lib/forms";
+import { useData } from "@/lib/use-data";
 
 /** How often the list refreshes its live status while open. */
 const REFRESH_MS = 60_000;
