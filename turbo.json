@@ -23,6 +23,12 @@
       "dependsOn": ["^build", "generate"],
       "outputs": ["coverage/**"]
     },
+    "test:coverage": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "env": ["DATABASE_URL", "TEST_DATABASE_URL"],
+      "outputs": ["coverage/**"]
+    },
     "test:integration": {
       "dependsOn": ["^build", "generate"],
       "cache": false,

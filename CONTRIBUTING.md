@@ -46,10 +46,24 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:integration   # needs Postgres (docker compose up -d)
+pnpm test:coverage      # unit + integration with coverage thresholds (needs Postgres)
 pnpm build
 ```
 
 The `pre-commit` hook runs ESLint and Prettier on staged files only.
+
+## Coverage
+
+CI fails if coverage drops below these (statements, branches, functions, lines):
+
+| Package           | Minimum            | Measured over                                                                    |
+| ----------------- | ------------------ | -------------------------------------------------------------------------------- |
+| `packages/shared` | 80%                | everything                                                                       |
+| `apps/api`        | 90% (branches 85%) | unit + integration tests; `server.ts` excluded                                   |
+| `apps/checker`    | 85%                | unit + integration tests; Cloudflare-only glue (`shard.ts`, `index.ts`) excluded |
+| `apps/web`        | 80%                | `src/lib` (pages and components are covered by Phase 5 E2E tests)                |
+
+Reports are uploaded as the `coverage-unit` and `coverage-integration` artifacts on every CI run.
 
 ## Secrets
 

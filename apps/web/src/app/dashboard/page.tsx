@@ -6,7 +6,8 @@ import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { Me, Project } from "@/lib/types";
-import { field, useData } from "@/lib/use-data";
+import { field } from "@/lib/forms";
+import { useData } from "@/lib/use-data";
 
 function Dashboard() {
   const { api } = useAuth();

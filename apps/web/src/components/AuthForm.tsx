@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_MIN_LENGTH } from "@pulse/shared";
 import { ApiError } from "@/lib/api";
-import { field } from "@/lib/use-data";
+import { field } from "@/lib/forms";
 import { useAuth } from "./AuthProvider";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {

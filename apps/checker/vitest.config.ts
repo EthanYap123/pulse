@@ -5,6 +5,15 @@ import { defineConfig } from "vitest/config";
 // for Neon. The thin Durable Object wrapper is exercised with `wrangler dev`.
 export default defineConfig({
   test: {
+    // `pnpm test:coverage` runs unit and integration tests together and enforces these.
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "html", "lcov"],
+      include: ["src/**/*.ts"],
+      // Cloudflare-only glue (imports cloudflare:workers), checked with `wrangler dev`.
+      exclude: ["src/shard.ts", "src/index.ts", "src/env.ts", "src/types/**"],
+      thresholds: { lines: 85, functions: 85, statements: 85, branches: 85 },
+    },
     projects: [
       {
         extends: true,
