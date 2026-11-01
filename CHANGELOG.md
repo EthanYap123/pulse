@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Dashboard: sign-up/login, projects, monitors with live status, latency chart (24h/7d/30d), light/dark/match-device theme, waking-API banner.
 - Checker: cron-driven HTTP checks in 5 Durable Object shards, monitor state machine, hourly flush to Postgres, config sync and live status from the API, and a check-history endpoint.
 - Measured Durable Object subrequest budget (own 50 per object, from cron too); confirms the 200-monitor cap.
 - Projects and monitors API with per-user and global caps, SSRF-safe URL validation, encrypted header values and tenant isolation.

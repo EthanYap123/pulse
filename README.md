@@ -35,6 +35,8 @@ pnpm dev
 
 Compose publishes Postgres on host port **5434** (not 5432) so it doesn't clash with a native Postgres install or other local projects; set `PULSE_DB_PORT` to use another port and update the URLs in your env files to match.
 
+To see checks without waiting for the cron, trigger a tick with `curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"`. Results reach Postgres (and the latency chart) at the hourly flush; the signed `POST /internal/v1/flush` endpoint does it immediately (see docs/API.md).
+
 Other commands: `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` (needs Postgres; uses `TEST_DATABASE_URL`, falling back to `DATABASE_URL`).
 
 ## Design docs
