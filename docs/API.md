@@ -88,17 +88,17 @@ type Project = {
 
 ### Monitors
 
-| Method | Path                               | Body / query            | Response                                    |
-| ------ | ---------------------------------- | ----------------------- | ------------------------------------------- |
-| GET    | `/v1/projects/:projectId/monitors` |                         | `200 { items: MonitorWithStatus[] }`        |
-| POST   | `/v1/projects/:projectId/monitors` | `MonitorInput`          | `201 Monitor` · `409 limit_reached` · `422` |
-| GET    | `/v1/monitors/:monitorId`          |                         | `200 MonitorWithStatus`                     |
-| PATCH  | `/v1/monitors/:monitorId`          | `Partial<MonitorInput>` | `200 Monitor`                               |
-| POST   | `/v1/monitors/:monitorId/pause`    |                         | `200 Monitor`                               |
-| POST   | `/v1/monitors/:monitorId/resume`   |                         | `200 Monitor`                               |
-| DELETE | `/v1/monitors/:monitorId`          |                         | `204`                                       |
-| GET    | `/v1/monitors/:monitorId/checks`   | `?range=24h\|7d\|30d`   | `200 { range, points: LatencyPoint[] }`     |
-| GET    | `/v1/monitors/:monitorId/uptime`   | `?days=1..90`           | `200 { days: DailyUptime[], uptimePct }`    |
+| Method | Path                               | Body / query                        | Response                                                               |
+| ------ | ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/v1/projects/:projectId/monitors` |                                     | `200 { items: MonitorWithStatus[] }`                                   |
+| POST   | `/v1/projects/:projectId/monitors` | `MonitorInput`                      | `201 Monitor` · `409 limit_reached` · `422`                            |
+| GET    | `/v1/monitors/:monitorId`          |                                     | `200 MonitorWithStatus`                                                |
+| PATCH  | `/v1/monitors/:monitorId`          | `Partial<MonitorInput>`             | `200 Monitor`                                                          |
+| POST   | `/v1/monitors/:monitorId/pause`    |                                     | `200 Monitor`                                                          |
+| POST   | `/v1/monitors/:monitorId/resume`   |                                     | `200 Monitor`                                                          |
+| DELETE | `/v1/monitors/:monitorId`          |                                     | `204`                                                                  |
+| GET    | `/v1/monitors/:monitorId/checks`   | `?range=24h\|7d\|30d` (default 24h) | `200 { range, points: LatencyPoint[], uptimePct: number \| null }`     |
+| GET    | `/v1/monitors/:monitorId/uptime`   | `?days=1..90`                       | `200 { days: DailyUptime[], uptimePct }` (Phase 3, from daily rollups) |
 
 ```ts
 type MonitorInput = {
@@ -117,7 +117,6 @@ type Monitor = Omit<MonitorInput, "headers"> & {
   projectId: string;
   isPaused: boolean;
   headerNames: string[]; // values are never returned
-  syncState: "synced" | "pending"; // checker config sync (added with the checker, Phase 2 §5)
   createdAt: string;
   updatedAt: string;
 };
@@ -144,7 +143,11 @@ type LatencyPoint = {
 type DailyUptime = { day: string; uptimePct: number | null; checks: number };
 ```
 
-Until the checker is connected (Phase 2 §5), `status` comes from the last value stored in Postgres, `statusSource` is always `"last_flush"`, `lastLatencyMs` and `openIncidentId` are `null`, and `syncState` is omitted.
+`status` and `lastLatencyMs` come from the checker's live state (`statusSource: "live"`). If the checker can't be reached within 3 s, `status` falls back to the value stored at the last hourly flush (`"last_flush"`) and `lastLatencyMs` is `null`. `openIncidentId` is filled in Phase 3.
+
+Config changes are pushed to the checker on every create, update, pause, resume and delete. If that push fails, the request still succeeds and the checker picks the change up at its next hourly reconcile from Postgres.
+
+`/checks`: 24h returns every check. 7d and 30d return hourly buckets with `avgMs`, `p95Ms`, `checks` and `failures` (latency averages only successful checks). Until the Phase 3 rollups exist, buckets are computed from raw checks, which are kept 7 days, so 30d shows at most 7 days. History in Postgres lags by up to an hour (the flush interval).
 
 ### Incidents
 
@@ -242,16 +245,17 @@ type StatusPage = {
 
 ### Live status (used by the API)
 
-| Method | Path                | Auth | Response                                                                                                          |
-| ------ | ------------------- | ---- | ----------------------------------------------------------------------------------------------------------------- |
-| POST   | `/internal/v1/live` | HMAC | `{ monitorIds: string[] }` (max 50) → `200 { items: Array<{ monitorId, status, lastCheckedAt, lastLatencyMs }> }` |
+| Method | Path                | Auth | Response                                                                                                                                                                 |
+| ------ | ------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/internal/v1/live` | HMAC | `{ monitors: Array<{ id, shard }> }` (max 50) → `200 { items: Array<{ monitorId, status, lastCheckedAt, lastLatencyMs }> }`. Monitors a shard doesn't know are left out. |
 
 ### Config sync (called by the API)
 
-| Method | Path                               | Auth | Body                                        |
-| ------ | ---------------------------------- | ---- | ------------------------------------------- |
-| POST   | `/internal/v1/monitors/sync`       | HMAC | `{ monitor: CheckerMonitorConfig }` → `204` |
-| DELETE | `/internal/v1/monitors/:monitorId` | HMAC | → `204`                                     |
+| Method | Path                                       | Auth | Body                                                                                                                                      |
+| ------ | ------------------------------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/internal/v1/monitors/sync`               | HMAC | `{ monitor: CheckerMonitorConfig }` → `204`                                                                                               |
+| DELETE | `/internal/v1/monitors/:monitorId?shard=N` | HMAC | → `204`                                                                                                                                   |
+| POST   | `/internal/v1/flush`                       | HMAC | Flushes every shard's buffer to Postgres now → `200 { flushed }`. For local development and tests; production flushes on the hourly tick. |
 
 HMAC auth: headers `X-Pulse-Timestamp` (unix seconds) and `X-Pulse-Signature: sha256=<hex>` over `timestamp + "." + method + "." + path + "." + body`, with a shared secret. Requests older than 300 s are rejected; comparison is constant-time.
 

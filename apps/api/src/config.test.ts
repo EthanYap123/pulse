@@ -16,6 +16,7 @@ describe("loadConfig", () => {
       port: 4000,
       version: "dev",
       cookie: { path: "/api/v1/auth", secure: false },
+      checker: null,
     });
   });
 
@@ -29,6 +30,23 @@ describe("loadConfig", () => {
 
   it("refuses an encryption key that isn't 32 bytes of hex", () => {
     expect(() => loadConfig({ ...base, ENCRYPTION_KEY: "abc" })).toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it("reads the checker settings when both are set", () => {
+    const config = loadConfig({
+      ...base,
+      CHECKER_URL: "http://localhost:8787",
+      CHECKER_HMAC_SECRET: "s".repeat(16),
+    });
+    expect(config.checker).toEqual({ url: "http://localhost:8787", secret: "s".repeat(16) });
+  });
+
+  it("treats empty checker settings as unset", () => {
+    expect(loadConfig({ ...base, CHECKER_URL: "", CHECKER_HMAC_SECRET: "" }).checker).toBeNull();
+  });
+
+  it("refuses only one of the checker settings", () => {
+    expect(() => loadConfig({ ...base, CHECKER_URL: "http://localhost:8787" })).toThrow(/both/);
   });
 
   it("refuses a missing database URL", () => {

@@ -91,7 +91,7 @@ Why a cron and not a queue: [ADR-0001](adr/0001-worker-cron-instead-of-a-queue.m
 
 For each due monitor, 6 at a time (the simultaneous-connection limit):
 
-1. `fetch(url, { method, headers, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) })`.
+1. `fetch(url, { method, headers, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) })`. Redirects are not followed: each hop would cost another subrequest, and a 3xx is inside the default expected range (200-399). Owners who want the final page can point the monitor at it.
 2. Record `latency_ms` when the response headers arrive, then cancel the body without reading it (saves CPU, memory and DO duration).
 3. Classify the result with `classifyCheck()` from `packages/shared`:
    - `ok`: status within the expected range.

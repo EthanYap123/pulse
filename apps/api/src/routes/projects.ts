@@ -1,5 +1,6 @@
 import { LIMITS, projectInputSchema, projectPatchSchema } from "@pulse/shared";
 import type { FastifyInstance } from "fastify";
+import type { CheckerClient } from "../checker-client.js";
 import { AppError, notFound } from "../errors.js";
 import type { Repositories } from "../repositories/index.js";
 import { idParam } from "./params.js";
@@ -22,7 +23,11 @@ function toProject(p: ProjectRow) {
 const slugTaken = () => new AppError(409, "conflict", "That status page address is already taken");
 
 /** Registered inside the authenticated scope in app.ts. */
-export function projectRoutes(app: FastifyInstance, repos: Repositories): void {
+export function projectRoutes(
+  app: FastifyInstance,
+  repos: Repositories,
+  checker: CheckerClient | null,
+): void {
   app.get("/v1/projects", async (request) => {
     const projects = await repos.projects.list(request.userId);
     return { items: projects.map(toProject) };
@@ -63,11 +68,12 @@ export function projectRoutes(app: FastifyInstance, repos: Repositories): void {
   });
 
   app.delete("/v1/projects/:projectId", async (request, reply) => {
-    const deleted = await repos.projects.delete(
+    const monitors = await repos.projects.delete(
       request.userId,
       idParam(request.params, "projectId"),
     );
-    if (!deleted) throw notFound();
+    if (!monitors) throw notFound();
+    if (checker) await Promise.all(monitors.map((m) => checker.remove(m.id, m.shard)));
     return reply.code(204).send();
   });
 }
