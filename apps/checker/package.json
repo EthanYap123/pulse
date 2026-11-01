@@ -6,15 +6,21 @@
   "scripts": {
     "build": "wrangler deploy --dry-run --outdir dist",
     "dev": "wrangler dev --test-scheduled",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration"
   },
   "dependencies": {
-    "@pulse/shared": "workspace:*"
+    "@neondatabase/serverless": "1.2.0",
+    "@pulse/shared": "workspace:*",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261029.1",
+    "@types/node": "22.20.5",
+    "dotenv": "18.0.9",
     "vitest": "4.1.12",
     "wrangler": "4.156.0"
   }
