@@ -1,6 +1,7 @@
 name = "pulse-checker"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+# node-postgres (local DB_DRIVER=pg) needs Node's socket APIs.
 compatibility_flags = ["nodejs_compat"]
 
 # Every 5 minutes (see docs/adr/0001-worker-cron-instead-of-a-queue.md).
@@ -10,5 +11,15 @@ crons = ["*/5 * * * *"]
 [observability]
 enabled = true
 
-# Durable Object shards, staging/production environments and secrets are
-# added in later phases. Local secrets go in .dev.vars (see .dev.vars.example).
+# Five shards, each a SQLite-backed Durable Object (docs/adr/0004-buffer-checks-in-durable-objects.md).
+[[durable_objects.bindings]]
+name = "SHARD"
+class_name = "Shard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Shard"]
+
+# Staging/production environments arrive in Phase 4. Secrets (DATABASE_URL,
+# CHECKER_HMAC_SECRET, ENCRYPTION_KEY) are set with `wrangler secret put`; locally they
+# go in .dev.vars (see .dev.vars.example).

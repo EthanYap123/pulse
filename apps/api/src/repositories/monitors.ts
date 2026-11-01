@@ -102,9 +102,80 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
       });
     },
 
-    async delete(ownerId: string, id: string): Promise<boolean> {
+    /** Returns the deleted monitor's shard (so the checker can drop it), or null if not found. */
+    async delete(ownerId: string, id: string): Promise<{ shard: number } | null> {
+      const monitor = await prisma.monitor.findFirst({
+        where: owned(ownerId, id),
+        select: { shard: true },
+      });
+      if (!monitor) return null;
       const { count } = await prisma.monitor.deleteMany({ where: owned(ownerId, id) });
-      return count > 0;
+      return count > 0 ? monitor : null;
+    },
+
+    /**
+     * Latency history for the chart. 24h returns every check; 7d and 30d return hourly
+     * buckets. Until the Phase 3 rollups exist, buckets come from raw checks (kept 7 days).
+     */
+    async history(
+      ownerId: string,
+      id: string,
+      range: HistoryRange,
+    ): Promise<HistoryPoint[] | null> {
+      const monitor = await prisma.monitor.findFirst({
+        where: owned(ownerId, id),
+        select: { id: true },
+      });
+      if (!monitor) return null;
+      if (range === "24h") {
+        const rows = await prisma.$queryRaw<RawPoint[]>`
+          SELECT checked_at AS t, ok, latency_ms
+          FROM check_results
+          WHERE monitor_id = ${id}::uuid AND checked_at > now() - interval '24 hours'
+          ORDER BY checked_at`;
+        return rows.map((r) => ({ t: r.t.toISOString(), ok: r.ok, latencyMs: r.latency_ms }));
+      }
+      const days = range === "7d" ? 7 : 30;
+      const rows = await prisma.$queryRaw<HourlyPoint[]>`
+        SELECT date_trunc('hour', checked_at) AS t,
+               count(*)::int AS checks,
+               (count(*) FILTER (WHERE NOT ok))::int AS failures,
+               round(avg(latency_ms) FILTER (WHERE ok))::int AS avg_ms,
+               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok))::int AS p95_ms
+        FROM check_results
+        WHERE monitor_id = ${id}::uuid AND checked_at > now() - make_interval(days => ${days}::int)
+        GROUP BY 1
+        ORDER BY 1`;
+      return rows.map((r) => ({
+        t: r.t.toISOString(),
+        ok: r.failures === 0,
+        latencyMs: r.avg_ms,
+        avgMs: r.avg_ms,
+        p95Ms: r.p95_ms,
+        checks: r.checks,
+        failures: r.failures,
+      }));
     },
   };
 }
+
+export type HistoryRange = "24h" | "7d" | "30d";
+
+/** One check (24h) or one hourly bucket (7d, 30d), which also has the aggregate fields. */
+export type HistoryPoint = {
+  t: string;
+  ok: boolean;
+  latencyMs: number | null;
+  avgMs?: number | null;
+  p95Ms?: number | null;
+  checks?: number;
+  failures?: number;
+};
+type RawPoint = { t: Date; ok: boolean; latency_ms: number | null };
+type HourlyPoint = {
+  t: Date;
+  checks: number;
+  failures: number;
+  avg_ms: number | null;
+  p95_ms: number | null;
+};

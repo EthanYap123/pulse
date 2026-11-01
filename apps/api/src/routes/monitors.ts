@@ -1,5 +1,13 @@
-import { LIMITS, monitorInputSchema, monitorPatchSchema } from "@pulse/shared";
+import {
+  LIMITS,
+  monitorInputSchema,
+  monitorPatchSchema,
+  type CheckerMonitor,
+  type LiveStatus,
+} from "@pulse/shared";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import type { CheckerClient } from "../checker-client.js";
 import { AppError, notFound } from "../errors.js";
 import type { Repositories } from "../repositories/index.js";
 import type { CapExceeded } from "../repositories/monitors.js";
@@ -9,9 +17,9 @@ type MonitorRow = NonNullable<Awaited<ReturnType<Repositories["monitors"]["get"]
 
 /**
  * The API shape from docs/API.md. Header values are write-only: only their names come back.
- * Live status from the checker replaces `status` and `statusSource` once the checker exists.
+ * Status comes from the checker when it answers, otherwise from the last hourly flush.
  */
-function toMonitor(m: MonitorRow) {
+function toMonitor(m: MonitorRow, live: LiveStatus | undefined) {
   return {
     id: m.id,
     projectId: m.projectId,
@@ -24,13 +32,27 @@ function toMonitor(m: MonitorRow) {
     headerNames: Object.keys(m.headers as Record<string, string>),
     showOnStatusPage: m.showOnStatusPage,
     isPaused: m.isPaused,
-    status: m.isPaused ? "paused" : m.lastStatus,
-    lastCheckedAt: m.lastCheckedAt?.toISOString() ?? null,
-    lastLatencyMs: null,
+    status: m.isPaused ? "paused" : (live?.status ?? m.lastStatus),
+    lastCheckedAt: live?.lastCheckedAt ?? m.lastCheckedAt?.toISOString() ?? null,
+    lastLatencyMs: live?.lastLatencyMs ?? null,
     openIncidentId: null,
-    statusSource: "last_flush",
+    statusSource: live ? "live" : "last_flush",
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
+  };
+}
+
+function toCheckerMonitor(m: MonitorRow): CheckerMonitor {
+  return {
+    id: m.id,
+    shard: m.shard,
+    url: m.url,
+    method: m.method,
+    expectedStatus: { min: m.expectedStatusMin, max: m.expectedStatusMax },
+    timeoutMs: m.timeoutMs,
+    failureThreshold: m.failureThreshold,
+    encryptedHeaders: m.headers as Record<string, string>,
+    isPaused: m.isPaused,
   };
 }
 
@@ -54,12 +76,31 @@ function capError(result: CapExceeded): AppError {
   );
 }
 
+const historyQuerySchema = z.object({ range: z.enum(["24h", "7d", "30d"]).default("24h") });
+
 /** Registered inside the authenticated scope in app.ts. */
-export function monitorRoutes(app: FastifyInstance, repos: Repositories): void {
+export function monitorRoutes(
+  app: FastifyInstance,
+  repos: Repositories,
+  checker: CheckerClient | null,
+): void {
+  async function withLive(rows: MonitorRow[]) {
+    const live = checker
+      ? await checker.live(rows.map((m) => ({ id: m.id, shard: m.shard })))
+      : null;
+    return rows.map((m) => toMonitor(m, live?.get(m.id)));
+  }
+
   async function current(userId: string, id: string) {
     const monitor = await repos.monitors.get(userId, id);
     if (!monitor) throw notFound();
-    return toMonitor(monitor);
+    return (await withLive([monitor]))[0]!;
+  }
+
+  /** Pushes the stored config to the checker after a change. */
+  async function sync(userId: string, id: string): Promise<void> {
+    const monitor = await repos.monitors.get(userId, id);
+    if (monitor && checker) await checker.sync(toCheckerMonitor(monitor));
   }
 
   app.get("/v1/projects/:projectId/monitors", async (request) => {
@@ -68,7 +109,7 @@ export function monitorRoutes(app: FastifyInstance, repos: Repositories): void {
       idParam(request.params, "projectId"),
     );
     if (!monitors) throw notFound();
-    return { items: monitors.map(toMonitor) };
+    return { items: await withLive(monitors) };
   });
 
   app.post("/v1/projects/:projectId/monitors", async (request, reply) => {
@@ -77,6 +118,7 @@ export function monitorRoutes(app: FastifyInstance, repos: Repositories): void {
     const result = await repos.monitors.create(request.userId, projectId, input);
     if (result.kind === "not_found") throw notFound();
     if (result.kind === "limit_reached") throw capError(result);
+    await sync(request.userId, result.id);
     return reply.code(201).send(await current(request.userId, result.id));
   });
 
@@ -84,11 +126,29 @@ export function monitorRoutes(app: FastifyInstance, repos: Repositories): void {
     current(request.userId, idParam(request.params, "monitorId")),
   );
 
+  app.get("/v1/monitors/:monitorId/checks", async (request) => {
+    const { range } = historyQuerySchema.parse(request.query);
+    const points = await repos.monitors.history(
+      request.userId,
+      idParam(request.params, "monitorId"),
+      range,
+    );
+    if (!points) throw notFound();
+    const checks = points.reduce((n, p) => n + (p.checks ?? 1), 0);
+    const failures = points.reduce((n, p) => n + (p.failures ?? (p.ok ? 0 : 1)), 0);
+    return {
+      range,
+      points,
+      uptimePct: checks === 0 ? null : Math.round(((checks - failures) / checks) * 10_000) / 100,
+    };
+  });
+
   app.patch("/v1/monitors/:monitorId", async (request) => {
     const id = idParam(request.params, "monitorId");
     const patch = monitorPatchSchema.parse(request.body);
     const result = await repos.monitors.update(request.userId, id, patch);
     if (result.kind === "not_found") throw notFound();
+    await sync(request.userId, id);
     return current(request.userId, id);
   });
 
@@ -101,16 +161,16 @@ export function monitorRoutes(app: FastifyInstance, repos: Repositories): void {
       const result = await repos.monitors.setPaused(request.userId, id, paused);
       if (result.kind === "not_found") throw notFound();
       if (result.kind === "limit_reached") throw capError(result);
+      await sync(request.userId, id);
       return current(request.userId, id);
     });
   }
 
   app.delete("/v1/monitors/:monitorId", async (request, reply) => {
-    const deleted = await repos.monitors.delete(
-      request.userId,
-      idParam(request.params, "monitorId"),
-    );
+    const id = idParam(request.params, "monitorId");
+    const deleted = await repos.monitors.delete(request.userId, id);
     if (!deleted) throw notFound();
+    await checker?.remove(id, deleted.shard);
     return reply.code(204).send();
   });
 }

@@ -8,4 +8,5 @@ export const testConfig: Config = {
   port: 0,
   version: "test",
   cookie: { path: "/api/v1/auth", secure: false },
+  checker: null,
 };

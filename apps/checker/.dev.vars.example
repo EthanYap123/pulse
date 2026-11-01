@@ -8,8 +8,10 @@ ENVIRONMENT=local
 DB_DRIVER=pg
 DATABASE_URL=postgresql://pulse:pulse@localhost:5434/pulse
 
+# Must match apps/api/.env.
+CHECKER_HMAC_SECRET=
+ENCRYPTION_KEY=
+
 # Added in later phases:
-# CHECKER_HMAC_SECRET=      # must match apps/api/.env
-# ENCRYPTION_KEY=           # must match apps/api/.env
 # TELEGRAM_BOT_TOKEN=
 # TELEGRAM_WEBHOOK_SECRET=

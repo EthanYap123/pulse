@@ -1,0 +1,67 @@
+import { DatabaseSync } from "node:sqlite";
+import type { CheckerMonitor } from "@pulse/shared";
+import type { CheckerDb } from "../src/db.js";
+import type { CheckResult } from "../src/run-checks.js";
+import type { Sql } from "../src/shard-core.js";
+
+/** The shard's SQL interface backed by node:sqlite, standing in for Durable Object storage. */
+export function memorySql(): Sql {
+  const db = new DatabaseSync(":memory:");
+  return {
+    all: <T>(query: string, ...params: (string | number | null)[]) =>
+      db.prepare(query).all(...params) as T[],
+    run: (query, ...params) => {
+      db.prepare(query).run(...params);
+    },
+  };
+}
+
+/** An in-memory CheckerDb that records what the shard writes. */
+export function fakeDb(monitors: CheckerMonitor[] = []) {
+  const state = {
+    monitors,
+    results: [] as CheckResult[],
+    statuses: [] as { monitorId: string; status: string; checkedAt: string }[],
+    opened: 0,
+    failNextInsert: false,
+  };
+  const open = (): Promise<CheckerDb> => {
+    state.opened++;
+    return Promise.resolve({
+      insertResults: (rows) => {
+        if (state.failNextInsert) {
+          state.failNextInsert = false;
+          return Promise.reject(new Error("database unavailable"));
+        }
+        state.results.push(...rows);
+        return Promise.resolve();
+      },
+      updateStatuses: (rows) => {
+        state.statuses.push(...rows);
+        return Promise.resolve();
+      },
+      loadShardMonitors: () => Promise.resolve(state.monitors),
+      close: () => Promise.resolve(),
+    });
+  };
+  return { state, open };
+}
+
+export function monitor(overrides: Partial<CheckerMonitor> = {}): CheckerMonitor {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    shard: 0,
+    url: "https://example.com/",
+    method: "GET",
+    expectedStatus: { min: 200, max: 399 },
+    timeoutMs: 1000,
+    failureThreshold: 3,
+    encryptedHeaders: {},
+    isPaused: false,
+    ...overrides,
+  };
+}
+
+export function idFor(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}

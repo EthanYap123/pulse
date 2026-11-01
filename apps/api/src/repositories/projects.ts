@@ -52,9 +52,19 @@ export function projectsRepository(prisma: PrismaClient) {
     },
 
     /** Returns false if there was nothing of this owner's to delete. */
-    async delete(ownerId: string, id: string): Promise<boolean> {
-      const { count } = await prisma.project.deleteMany({ where: { id, ownerId } });
-      return count > 0;
+    /**
+     * Deletes the project (its monitors cascade). Returns those monitors so the checker can
+     * drop them, or null if there was nothing of this owner's to delete.
+     */
+    async delete(ownerId: string, id: string): Promise<{ id: string; shard: number }[] | null> {
+      return prisma.$transaction(async (tx) => {
+        const monitors = await tx.monitor.findMany({
+          where: { projectId: id, project: { ownerId } },
+          select: { id: true, shard: true },
+        });
+        const { count } = await tx.project.deleteMany({ where: { id, ownerId } });
+        return count > 0 ? monitors : null;
+      });
     },
   };
 }

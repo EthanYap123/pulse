@@ -1,0 +1,13 @@
+{
+  // Tests run in Node (Vitest), so they use Node's types instead of the Workers types.
+  // They import only the runtime-agnostic modules (not shard.ts or index.ts).
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [".", "../src/types"]
+}
