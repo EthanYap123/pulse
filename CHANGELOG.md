@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Measured Durable Object subrequest budget (own 50 per object, from cron too); confirms the 200-monitor cap.
 - Projects and monitors API with per-user and global caps, SSRF-safe URL validation, encrypted header values and tenant isolation.
 - Accounts: sign-up, login, rotating refresh tokens with reuse detection, logout and `/v1/me`.
 - Database schema and first migration for users, refresh tokens, projects, monitors and check results.

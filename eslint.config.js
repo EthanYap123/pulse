@@ -14,6 +14,7 @@ export default tseslint.config(
       "**/coverage/**",
       "**/generated/**",
       "**/next-env.d.ts",
+      "spikes/**",
     ],
   },
   js.configs.recommended,
