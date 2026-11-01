@@ -1,0 +1,16 @@
+# Throwaway Worker for issue #33. Deployed once to measure limits, then deleted.
+name = "pulse-spike-subrequests"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "PROBE"
+class_name = "Probe"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Probe"]
+
+# Every minute, so the cron path can be measured too.
+[triggers]
+crons = ["* * * * *"]

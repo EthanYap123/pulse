@@ -44,7 +44,7 @@ Estimated Neon use: ~15.5 CU-hours/month for production flushes, the same for st
 - **History in Neon is up to 1 hour behind.** The dashboard covers this by showing live status from the checker; the 24 h latency chart lags by up to an hour. The API could ask the shards for their unflushed buffer to fill the gap later.
 - **Data loss window:** if a shard's storage were lost, up to an hour of raw checks would be lost (incidents are already in Neon). Accepted.
 - **More moving parts** than "Worker writes to Postgres": a sync protocol between API and checker, an hourly reconcile, and two kinds of storage.
-- **Unverified limit:** Cloudflare's docs don't say whether a Durable Object invoked from the cron Worker has its own 50-subrequest budget. The Phase 2 spike measures this; if it's shared, the global cap drops to 40 monitors.
+- **Limit measured (2026-11-01):** Cloudflare's docs didn't say whether a Durable Object invoked from the cron Worker has its own 50-subrequest budget. The Phase 2 spike showed it does (`spikes/do-subrequests/RESULTS.md`), so the 200-monitor cap stands.
 - Durable Objects tie the checker to Cloudflare more tightly than a plain Worker would.
 
 ## Alternatives considered

@@ -43,7 +43,7 @@ Source: [Workers limits](https://developers.cloudflare.com/workers/platform/limi
 | DO SQLite rows read                            | 5,000,000 / day                                  | Negligible.                                                                                                                                                                                                                              |
 | DO storage                                     | 5 GB total, 1 GB per object                      | Buffers are cleared every hour after the flush to Neon.                                                                                                                                                                                  |
 
-**To verify in the Phase 2 spike:** the docs do not say whether a Durable Object called from the cron Worker gets its own 50-subrequest budget or shares the caller's. The design assumes its own budget (Durable Objects are separate invocations). If it turns out to be shared, the global monitor cap drops to 40 and this file gets updated.
+**Measured 2026-11-01 (spike, issue #33):** a Durable Object called from the cron Worker gets **its own 50-subrequest budget**; calling it costs the caller one. Three objects called from one cron run made 50 requests each. See [`spikes/do-subrequests/RESULTS.md`](../spikes/do-subrequests/RESULTS.md). The global cap of 200 (5 x 40) stands.
 
 ## Neon Postgres (Free)
 
@@ -180,6 +180,6 @@ When the global cap is reached, new monitors are refused with a clear message in
 ## Risks and open questions
 
 1. **Render may ask for a card.** Render's docs only mention a payment method for overages, but community reports say some accounts are asked for card verification at sign-up (with a reversed $1 charge). **Stop and ask before Phase 4** if Render asks for one. Fallbacks that need no card: run the API as Next.js route handlers on Vercel (no Docker deploy target), or keep the Docker image as a CI artifact only and document it.
-2. **Durable Object subrequest budget** when called from a cron Worker is not documented. Measure in the Phase 2 spike.
+2. ~~Durable Object subrequest budget when called from a cron Worker~~ **Resolved 2026-11-01:** each object has its own 50 (spike results in `spikes/do-subrequests/RESULTS.md`).
 3. **Durable Object duration** in the worst case is ~78% of the daily cap. If real numbers are higher, lower the timeout or the shard count.
 4. **Neon compute estimate for dashboard use** is a guess. Watch the Neon usage page weekly after launch.
