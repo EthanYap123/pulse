@@ -149,6 +149,13 @@ Delivery rules:
 - Telegram: on 403 (bot blocked) mark the channel `disabled`; on 429 respect `retry_after`.
 - Max 5 attempts with backoff (next tick, +5, +15, +30, +60 min), then `failed`. Failed deliveries are visible on the dashboard.
 
+How it runs (Phase 3):
+
+- The statement that opens or resolves an incident also inserts its `alert_deliveries` rows (one writable CTE), so an incident and its alerts can't drift apart. It returns the pending rows with what the message needs (channel, encrypted webhook, monitor and project names), and the shard keeps them in an `alerts` table in its SQLite. No extra Postgres read is needed to send.
+- Each tick, after writing incident events, the shard sends due alerts (max 10, within the remaining subrequest budget), oldest first. A `resolved` alert waits until the `opened` alert for the same incident and channel has been sent; if the `opened` alert fails for good, the `resolved` one is dropped too. Outcomes go back to Postgres in one `UPDATE ... FROM unnest(...)`.
+- Messages go out with `allowed_mentions: { parse: [] }`, so a monitor named `@everyone` can't ping a server.
+- A monitor paused through the API has its incident resolved by the API, so no recovery alert is sent for it.
+
 ### 3.5 Hourly flush (minute 0 of every hour)
 
 Each shard, on the tick at minute 0, after its checks:

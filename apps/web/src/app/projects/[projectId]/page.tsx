@@ -5,11 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
+import { AlertChannels } from "@/components/AlertChannels";
 import { IncidentList } from "@/components/IncidentList";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ApiError } from "@/lib/api";
 import { formatMs, timeAgo } from "@/lib/format";
-import type { Incident, Monitor, Project } from "@/lib/types";
+import type { Channel, Incident, Monitor, Project } from "@/lib/types";
 import { field } from "@/lib/forms";
 import { useData } from "@/lib/use-data";
 
@@ -23,12 +24,18 @@ function ProjectView({ projectId }: { projectId: string }) {
   const data = useData(
     projectId,
     async () => {
-      const [project, list, incidents] = await Promise.all([
+      const [project, list, incidents, channels] = await Promise.all([
         api.get<Project>(`/projects/${projectId}`),
         api.get<{ items: Monitor[] }>(`/projects/${projectId}/monitors`),
         api.get<{ items: Incident[] }>(`/projects/${projectId}/incidents?limit=10`),
+        api.get<{ items: Channel[] }>(`/projects/${projectId}/channels`),
       ]);
-      return { project, monitors: list.items, incidents: incidents.items };
+      return {
+        project,
+        monitors: list.items,
+        incidents: incidents.items,
+        channels: channels.items,
+      };
     },
     REFRESH_MS,
   );
@@ -69,7 +76,7 @@ function ProjectView({ projectId }: { projectId: string }) {
       </main>
     );
   }
-  const { project, monitors, incidents } = data.data;
+  const { project, monitors, incidents, channels } = data.data;
 
   function editNote(incident: Incident) {
     const note = window.prompt(
@@ -172,6 +179,8 @@ function ProjectView({ projectId }: { projectId: string }) {
           </p>
         )}
       </section>
+
+      <AlertChannels api={api} projectId={projectId} channels={channels} onChange={data.reload} />
 
       <section className="card">
         <h2>Incidents</h2>

@@ -72,6 +72,7 @@ describe("ShardCore.tick", () => {
       flushed: null,
       overCap: 0,
       incidentEventsWritten: 0,
+      alertsSent: 0,
     });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(core.pendingResults()).toBe(2);

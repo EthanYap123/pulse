@@ -64,3 +64,15 @@ export type HistoryPoint = {
 };
 
 export type History = { range: HistoryRange; points: HistoryPoint[]; uptimePct: number | null };
+
+export type Channel = {
+  id: string;
+  projectId: string;
+  type: "discord" | "telegram";
+  name: string;
+  cooldownMinutes: number;
+  state: "pending_link" | "active" | "disabled";
+  disabledReason: string | null;
+  target: string | null;
+  createdAt: string;
+};

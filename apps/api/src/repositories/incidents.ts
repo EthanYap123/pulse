@@ -41,6 +41,15 @@ export function incidentsRepository(prisma: PrismaClient) {
       });
     },
 
+    /** Alert deliveries for one incident (the caller has already checked ownership). */
+    deliveries(incidentId: string) {
+      return prisma.alertDelivery.findMany({
+        where: { incidentId },
+        include: { channel: { select: { name: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+    },
+
     async setNote(ownerId: string, id: string, note: string | null): Promise<boolean> {
       const { count } = await prisma.incident.updateMany({
         where: { id, ...owned(ownerId) },

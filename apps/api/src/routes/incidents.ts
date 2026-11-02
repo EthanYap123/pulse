@@ -57,7 +57,19 @@ export function incidentRoutes(app: FastifyInstance, repos: Repositories): void 
       idParam(request.params, "incidentId"),
     );
     if (!incident) throw notFound();
-    return toIncident(incident);
+    const deliveries = await repos.incidents.deliveries(incident.id);
+    return {
+      ...toIncident(incident),
+      deliveries: deliveries.map((d) => ({
+        channelId: d.channelId,
+        channelName: d.channel.name,
+        event: d.event,
+        state: d.state,
+        attempts: d.attempts,
+        sentAt: d.sentAt?.toISOString() ?? null,
+        lastError: d.lastError,
+      })),
+    };
   });
 
   app.patch("/v1/incidents/:incidentId", async (request) => {

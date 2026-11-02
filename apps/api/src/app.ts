@@ -8,6 +8,7 @@ import type { PrismaClient } from "./db.js";
 import { registerErrorHandling } from "./errors.js";
 import { createRepositories } from "./repositories/index.js";
 import { authRoutes } from "./routes/auth.js";
+import { channelRoutes } from "./routes/channels.js";
 import { incidentRoutes } from "./routes/incidents.js";
 import { monitorRoutes } from "./routes/monitors.js";
 import { projectRoutes } from "./routes/projects.js";
@@ -18,6 +19,8 @@ export type AppOptions = {
   logger?: boolean;
   /** Overrides the client built from `config.checker` (tests pass a fake). */
   checker?: CheckerClient | null;
+  /** Outbound fetch for alert test messages (tests pass a fake). */
+  alertFetch?: typeof fetch;
 };
 
 export function buildApp({
@@ -63,6 +66,7 @@ export function buildApp({
     projectRoutes(scope, repos, checker);
     monitorRoutes(scope, repos, checker);
     incidentRoutes(scope, repos);
+    channelRoutes(scope, repos, options.alertFetch ?? ((input, init) => fetch(input, init)));
     done();
   });
 
