@@ -184,14 +184,14 @@ type Delivery = {
 
 ### Alert channels
 
-| Method | Path                               | Body                                                      | Response                                                                                             |
-| ------ | ---------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| GET    | `/v1/projects/:projectId/channels` |                                                           | `200 { items: Channel[] }`                                                                           |
-| POST   | `/v1/projects/:projectId/channels` | `{ type: "discord", name, webhookUrl, cooldownMinutes? }` | `201 Channel`                                                                                        |
-| POST   | `/v1/projects/:projectId/channels` | `{ type: "telegram", name, cooldownMinutes? }`            | `201 Channel & { linkUrl: "https://t.me/<bot>?start=<code>", linkExpiresAt }` (state `pending_link`) |
-| PATCH  | `/v1/channels/:channelId`          | `{ name?, webhookUrl?, cooldownMinutes?, enabled? }`      | `200 Channel`                                                                                        |
-| POST   | `/v1/channels/:channelId/test`     |                                                           | `202` (test message queued) · `409` if not `active`                                                  |
-| DELETE | `/v1/channels/:channelId`          |                                                           | `204`                                                                                                |
+| Method | Path                               | Body                                                      | Response                                                                                                                                                            |
+| ------ | ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/v1/projects/:projectId/channels` |                                                           | `200 { items: Channel[] }`                                                                                                                                          |
+| POST   | `/v1/projects/:projectId/channels` | `{ type: "discord", name, webhookUrl, cooldownMinutes? }` | `201 Channel`                                                                                                                                                       |
+| POST   | `/v1/projects/:projectId/channels` | `{ type: "telegram", name, cooldownMinutes? }`            | `201 Channel & { linkUrl: "https://t.me/<bot>?start=<code>", linkExpiresAt }` (state `pending_link`) **(Telegram: not yet; the API currently refuses it with 422)** |
+| PATCH  | `/v1/channels/:channelId`          | `{ name?, webhookUrl?, cooldownMinutes?, enabled? }`      | `200 Channel`                                                                                                                                                       |
+| POST   | `/v1/channels/:channelId/test`     |                                                           | Sends now: `200 { sent: true }` · `409 channel_inactive` · `502 channel_disabled` (Discord said 404/401/403; the channel is turned off) · `502 alert_failed`        |
+| DELETE | `/v1/channels/:channelId`          |                                                           | `204`                                                                                                                                                               |
 
 ```ts
 type Channel = {
@@ -207,7 +207,7 @@ type Channel = {
 };
 ```
 
-Discord `webhookUrl` must match `https://discord.com/api/webhooks/<id>/<token>` (or `discordapp.com`). It is never returned in full.
+Discord `webhookUrl` must match `https://discord.com/api/webhooks/<id>/<token>` (or `discordapp.com`, `ptb.`/`canary.`). It is stored encrypted and never returned in full. `PATCH` with a new `webhookUrl` turns a disabled channel back on; `enabled: false` turns it off (`disabledReason: "turned_off"`). `GET /v1/incidents/:id` includes the incident's `deliveries`.
 
 ## Checker endpoints (Cloudflare Worker)
 

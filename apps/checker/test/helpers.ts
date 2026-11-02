@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { CheckerMonitor } from "@pulse/shared";
-import type { CheckerDb, IncidentEvent } from "../src/db.js";
+import type { AlertJob, CheckerDb, DeliveryUpdate, IncidentEvent } from "../src/db.js";
 import type { CheckResult } from "../src/run-checks.js";
 import type { Sql } from "../src/shard-core.js";
 
@@ -26,6 +26,10 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
     failNextInsert: false,
     events: [] as IncidentEvent[],
     failEvents: false,
+    /** What writeIncidentEvent returns: the alert deliveries Postgres would create. */
+    jobsFor: (_event: IncidentEvent): AlertJob[] => [],
+    deliveryUpdates: [] as DeliveryUpdate[],
+    disabledChannels: [] as { channelId: string; reason: string }[],
   };
   const open = (): Promise<CheckerDb> => {
     state.opened++;
@@ -46,6 +50,14 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
       writeIncidentEvent: (event) => {
         if (state.failEvents) return Promise.reject(new Error("database unavailable"));
         state.events.push(event);
+        return Promise.resolve(state.jobsFor(event));
+      },
+      updateDeliveries: (rows) => {
+        state.deliveryUpdates.push(...rows);
+        return Promise.resolve();
+      },
+      disableChannels: (rows) => {
+        state.disabledChannels.push(...rows);
         return Promise.resolve();
       },
       close: () => Promise.resolve(),

@@ -9,6 +9,8 @@ let db: CheckerDb;
 
 const MONITOR_A = "00000000-0000-4000-8000-00000000000a";
 const MONITOR_B = "00000000-0000-4000-8000-00000000000b";
+const CHANNEL_ON = "00000000-0000-4000-8000-0000000000c1";
+const CHANNEL_OFF = "00000000-0000-4000-8000-0000000000c2";
 
 beforeAll(async () => {
   await admin.connect();
@@ -29,6 +31,12 @@ beforeEach(async () => {
      VALUES ($1, $3, 'A', 'https://a.example/', 2, '{"X-Key":"v1.x.y.z"}', false, 2),
             ($2, $3, 'B', 'https://b.example/', 4, '{}', true, 3)`,
     [MONITOR_A, MONITOR_B, projects[0]!.id],
+  );
+  await admin.query(
+    `INSERT INTO alert_channels (id, project_id, type, name, secret_enc, state, cooldown_minutes)
+     VALUES ($1, $3, 'discord', 'Ops', 'v1.enc.on', 'active', 10),
+            ($2, $3, 'discord', 'Old', 'v1.enc.off', 'disabled', 10)`,
+    [CHANNEL_ON, CHANNEL_OFF, projects[0]!.id],
   );
 });
 
@@ -187,5 +195,131 @@ describe("incident events against Postgres", () => {
       lastStatusCode: null,
     });
     expect(await incidents()).toEqual([]);
+  });
+});
+
+describe("alert deliveries against Postgres", () => {
+  const open = (startedAt: string) =>
+    db.writeIncidentEvent({
+      type: "opened",
+      monitorId: MONITOR_A,
+      startedAt,
+      cause: "status",
+      lastStatusCode: 503,
+    });
+  const resolve = (resolvedAt: string) =>
+    db.writeIncidentEvent({
+      type: "resolved",
+      monitorId: MONITOR_A,
+      resolvedAt,
+      reason: "recovered",
+    });
+
+  async function deliveries() {
+    const { rows } = await admin.query(
+      `SELECT c.name, d.event::text, d.state::text FROM alert_deliveries d
+       JOIN alert_channels c ON c.id = d.channel_id ORDER BY d.created_at, d.event`,
+    );
+    return rows;
+  }
+
+  it("queues an outage alert for each active channel and returns what the message needs", async () => {
+    const jobs = await open("2026-11-01T12:00:00.000Z");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.deliveryId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(jobs[0]).toMatchObject({
+      channelId: CHANNEL_ON,
+      channelType: "discord",
+      secretEnc: "v1.enc.on",
+      message: {
+        event: "opened",
+        projectName: "P",
+        monitorName: "A",
+        monitorUrl: "https://a.example/",
+        startedAt: "2026-11-01T12:00:00.000Z",
+        cause: "status",
+        lastStatusCode: 503,
+      },
+    });
+    expect(await deliveries()).toEqual([{ name: "Ops", event: "opened", state: "pending" }]);
+  });
+
+  it("returns nothing when the event is replayed", async () => {
+    await open("2026-11-01T12:00:00.000Z");
+    expect(await open("2026-11-01T12:00:00.000Z")).toEqual([]);
+    expect(await deliveries()).toHaveLength(1);
+  });
+
+  it("only queues a recovery alert where the outage alert went out", async () => {
+    const [opened] = await open("2026-11-01T12:00:00.000Z");
+    await db.updateDeliveries([
+      {
+        id: opened!.deliveryId,
+        state: "failed",
+        attempts: 1,
+        lastError: "rejected (400)",
+        sentAt: null,
+        nextAttemptAt: "2026-11-01T12:00:01.000Z",
+      },
+    ]);
+    expect(await resolve("2026-11-01T12:30:00.000Z")).toEqual([]);
+
+    // Next outage: this time the outage alert is sent, so the recovery is queued.
+    const [second] = await open("2026-11-01T13:00:00.000Z");
+    await db.updateDeliveries([
+      {
+        id: second!.deliveryId,
+        state: "sent",
+        attempts: 1,
+        lastError: null,
+        sentAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+        nextAttemptAt: "2026-11-01T13:00:01.000Z",
+      },
+    ]);
+    const [recovery] = await resolve("2026-11-01T13:20:00.000Z");
+    expect(recovery?.message).toMatchObject({
+      event: "resolved",
+      startedAt: "2026-11-01T13:00:00.000Z",
+      resolvedAt: "2026-11-01T13:20:00.000Z",
+      reason: "recovered",
+    });
+  });
+
+  it("suppresses an outage alert inside the channel's cooldown", async () => {
+    const [first] = await open("2026-11-01T12:00:00.000Z");
+    // The first outage alert was sent a minute ago (cooldown is 10 minutes).
+    await db.updateDeliveries([
+      {
+        id: first!.deliveryId,
+        state: "sent",
+        attempts: 1,
+        lastError: null,
+        sentAt: new Date(Date.now() - 60_000).toISOString(),
+        nextAttemptAt: new Date().toISOString(),
+      },
+    ]);
+    await resolve("2026-11-01T12:05:00.000Z");
+    // It flaps straight back down.
+    expect(await open("2026-11-01T12:06:00.000Z")).toEqual([]);
+    expect((await deliveries()).map((d) => [d.event, d.state])).toEqual([
+      ["opened", "sent"],
+      ["resolved", "pending"],
+      ["opened", "suppressed"],
+    ]);
+  });
+
+  it("disables channels", async () => {
+    await db.disableChannels([{ channelId: CHANNEL_ON, reason: "webhook_deleted" }]);
+    const { rows } = await admin.query(
+      `SELECT state::text, disabled_reason FROM alert_channels WHERE id = $1`,
+      [CHANNEL_ON],
+    );
+    expect(rows[0]).toEqual({ state: "disabled", disabled_reason: "webhook_deleted" });
+    expect(await open("2026-11-01T12:00:00.000Z")).toEqual([]);
+  });
+
+  it("does nothing for empty batches", async () => {
+    await db.updateDeliveries([]);
+    await db.disableChannels([]);
   });
 });

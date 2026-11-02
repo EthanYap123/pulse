@@ -1,4 +1,4 @@
-import type { CheckError, CheckerMonitor } from "@pulse/shared";
+import type { AlertMessage, CheckError, CheckerMonitor } from "@pulse/shared";
 import type { CheckResult } from "./run-checks.js";
 
 /** A state change that must reach Postgres straight away (docs/ARCHITECTURE.md §3.4). */
@@ -12,6 +12,26 @@ export type IncidentEvent =
     }
   | { type: "resolved"; monitorId: string; resolvedAt: string; reason: "recovered" | "paused" };
 
+/** One alert to send: a pending row in alert_deliveries plus everything the message needs. */
+export type AlertJob = {
+  deliveryId: string;
+  incidentId: string;
+  channelId: string;
+  channelType: "discord" | "telegram";
+  /** The webhook URL (or Telegram chat id), still encrypted. */
+  secretEnc: string;
+  message: AlertMessage;
+};
+
+export type DeliveryUpdate = {
+  id: string;
+  state: "pending" | "sent" | "failed";
+  attempts: number;
+  lastError: string | null;
+  sentAt: string | null;
+  nextAttemptAt: string;
+};
+
 /**
  * Every query the checker makes to Postgres. Two drivers run the same SQL: Neon's HTTP
  * driver in Cloudflare, node-postgres locally and in tests (docs/ARCHITECTURE.md §5).
@@ -21,8 +41,14 @@ export interface CheckerDb {
   insertResults(rows: CheckResult[]): Promise<void>;
   updateStatuses(rows: { monitorId: string; status: string; checkedAt: string }[]): Promise<void>;
   loadShardMonitors(shard: number): Promise<CheckerMonitor[]>;
-  /** Opens or resolves an incident. Idempotent: replaying an event changes nothing. */
-  writeIncidentEvent(event: IncidentEvent): Promise<void>;
+  /**
+   * Opens or resolves an incident and creates its alert deliveries in the same statement.
+   * Returns the deliveries to send. Idempotent: replaying an event changes nothing and
+   * returns nothing.
+   */
+  writeIncidentEvent(event: IncidentEvent): Promise<AlertJob[]>;
+  updateDeliveries(rows: DeliveryUpdate[]): Promise<void>;
+  disableChannels(rows: { channelId: string; reason: string }[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -49,18 +75,111 @@ FROM monitors
 WHERE shard = $1
 ORDER BY id`;
 
-// ON CONFLICT targets the partial unique index "one open incident per monitor", so a second
-// "opened" for the same outage is a no-op. EXISTS skips monitors deleted since the check.
-const OPEN_INCIDENT = `
-INSERT INTO incidents (monitor_id, started_at, cause, last_status_code)
-SELECT $1::uuid, $2::timestamptz, $3::check_error, $4::smallint
-WHERE EXISTS (SELECT 1 FROM monitors WHERE id = $1::uuid)
-ON CONFLICT (monitor_id) WHERE resolved_at IS NULL DO NOTHING`;
+const MONITOR_CTE = `
+m AS (
+  SELECT mo.id, mo.name, mo.url, mo.project_id, p.name AS project_name
+  FROM monitors mo JOIN projects p ON p.id = mo.project_id
+  WHERE mo.id = $1::uuid
+)`;
 
+const JOB_COLUMNS = `
+ins.id AS delivery_id, ins.incident_id, c.id AS channel_id, c.type::text AS channel_type,
+c.secret_enc, m.name AS monitor_name, m.url AS monitor_url, m.project_name`;
+
+// Opens the incident (a no-op if one is already open, thanks to the partial unique index;
+// a deleted monitor matches no row in m) and queues an "opened" delivery for each active
+// channel of the project. A channel that was sent an "opened" alert for this monitor within
+// its cooldown gets a "suppressed" row instead, which stops flapping services spamming it.
+const OPEN_INCIDENT = `
+WITH ${MONITOR_CTE},
+inc AS (
+  INSERT INTO incidents (monitor_id, started_at, cause, last_status_code)
+  SELECT m.id, $2::timestamptz, $3::check_error, $4::smallint FROM m
+  ON CONFLICT (monitor_id) WHERE resolved_at IS NULL DO NOTHING
+  RETURNING id, started_at, cause, last_status_code
+),
+ins AS (
+  INSERT INTO alert_deliveries (incident_id, channel_id, event, state)
+  SELECT inc.id, c.id, 'opened',
+         CASE WHEN EXISTS (
+           SELECT 1 FROM alert_deliveries d JOIN incidents prev ON prev.id = d.incident_id
+           WHERE d.channel_id = c.id AND d.event = 'opened' AND d.state = 'sent'
+             AND prev.monitor_id = m.id
+             AND d.sent_at > now() - make_interval(mins => c.cooldown_minutes::int)
+         ) THEN 'suppressed'::delivery_state ELSE 'pending'::delivery_state END
+  FROM inc CROSS JOIN m
+  JOIN alert_channels c ON c.project_id = m.project_id AND c.state = 'active'
+  ON CONFLICT (incident_id, channel_id, event) DO NOTHING
+  RETURNING id, incident_id, channel_id, state
+)
+SELECT ${JOB_COLUMNS}, inc.started_at, NULL::timestamptz AS resolved_at,
+       inc.cause::text AS cause, inc.last_status_code
+FROM ins JOIN alert_channels c ON c.id = ins.channel_id CROSS JOIN m CROSS JOIN inc
+WHERE ins.state = 'pending'`;
+
+// Resolves the open incident and queues a "resolved" delivery only for channels whose
+// "opened" alert went out (or is still going out): no recovery message without an outage one.
 const RESOLVE_INCIDENT = `
-UPDATE incidents
-SET resolved_at = greatest($2::timestamptz, started_at), resolve_reason = $3::resolve_reason
-WHERE monitor_id = $1::uuid AND resolved_at IS NULL`;
+WITH ${MONITOR_CTE},
+inc AS (
+  UPDATE incidents
+  SET resolved_at = greatest($2::timestamptz, started_at), resolve_reason = $3::resolve_reason
+  WHERE monitor_id = $1::uuid AND resolved_at IS NULL
+  RETURNING id, started_at, resolved_at
+),
+ins AS (
+  INSERT INTO alert_deliveries (incident_id, channel_id, event, state)
+  SELECT inc.id, d.channel_id, 'resolved', 'pending'
+  FROM inc
+  JOIN alert_deliveries d
+    ON d.incident_id = inc.id AND d.event = 'opened' AND d.state IN ('pending', 'sent')
+  JOIN alert_channels c ON c.id = d.channel_id AND c.state = 'active'
+  ON CONFLICT (incident_id, channel_id, event) DO NOTHING
+  RETURNING id, incident_id, channel_id
+)
+SELECT ${JOB_COLUMNS}, inc.started_at, inc.resolved_at,
+       NULL::text AS cause, NULL::smallint AS last_status_code
+FROM ins JOIN alert_channels c ON c.id = ins.channel_id CROSS JOIN m CROSS JOIN inc`;
+
+const UPDATE_DELIVERIES = `
+UPDATE alert_deliveries d
+SET state = u.state::delivery_state, attempts = u.attempts, last_error = u.last_error,
+    sent_at = u.sent_at, next_attempt_at = u.next_attempt_at
+FROM unnest($1::uuid[], $2::text[], $3::smallint[], $4::text[], $5::timestamptz[], $6::timestamptz[])
+  AS u(id, state, attempts, last_error, sent_at, next_attempt_at)
+WHERE d.id = u.id`;
+
+const DISABLE_CHANNELS = `
+UPDATE alert_channels
+SET state = 'disabled', disabled_reason = u.reason
+FROM unnest($1::uuid[], $2::text[]) AS u(id, reason)
+WHERE alert_channels.id = u.id`;
+
+function iso(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === "string" ? value : undefined;
+}
+
+function toJobs(rows: Record<string, unknown>[], event: IncidentEvent): AlertJob[] {
+  return rows.map((r) => ({
+    deliveryId: String(r.delivery_id),
+    incidentId: String(r.incident_id),
+    channelId: String(r.channel_id),
+    channelType: r.channel_type === "telegram" ? "telegram" : "discord",
+    secretEnc: String(r.secret_enc),
+    message: {
+      event: event.type,
+      projectName: String(r.project_name),
+      monitorName: String(r.monitor_name),
+      monitorUrl: String(r.monitor_url),
+      startedAt: iso(r.started_at),
+      resolvedAt: iso(r.resolved_at),
+      cause: typeof r.cause === "string" ? (r.cause as CheckError) : undefined,
+      lastStatusCode: typeof r.last_status_code === "number" ? r.last_status_code : null,
+      reason: event.type === "resolved" ? event.reason : undefined,
+    },
+  }));
+}
 
 export function createCheckerDb(query: Query, close: () => Promise<void>): CheckerDb {
   return {
@@ -101,16 +220,33 @@ export function createCheckerDb(query: Query, close: () => Promise<void>): Check
     },
 
     async writeIncidentEvent(event) {
-      if (event.type === "opened") {
-        await query(OPEN_INCIDENT, [
-          event.monitorId,
-          event.startedAt,
-          event.cause,
-          event.lastStatusCode,
-        ]);
-      } else {
-        await query(RESOLVE_INCIDENT, [event.monitorId, event.resolvedAt, event.reason]);
-      }
+      const rows =
+        event.type === "opened"
+          ? await query(OPEN_INCIDENT, [
+              event.monitorId,
+              event.startedAt,
+              event.cause,
+              event.lastStatusCode,
+            ])
+          : await query(RESOLVE_INCIDENT, [event.monitorId, event.resolvedAt, event.reason]);
+      return toJobs(rows, event);
+    },
+
+    async updateDeliveries(rows) {
+      if (rows.length === 0) return;
+      await query(UPDATE_DELIVERIES, [
+        rows.map((r) => r.id),
+        rows.map((r) => r.state),
+        rows.map((r) => r.attempts),
+        rows.map((r) => r.lastError),
+        rows.map((r) => r.sentAt),
+        rows.map((r) => r.nextAttemptAt),
+      ]);
+    },
+
+    async disableChannels(rows) {
+      if (rows.length === 0) return;
+      await query(DISABLE_CHANNELS, [rows.map((r) => r.channelId), rows.map((r) => r.reason)]);
     },
 
     close,

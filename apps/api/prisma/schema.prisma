@@ -38,6 +38,38 @@ enum ResolveReason {
   @@map("resolve_reason")
 }
 
+enum ChannelType {
+  discord
+  telegram
+
+  @@map("channel_type")
+}
+
+enum ChannelState {
+  /// Telegram channel waiting for the user to send /start <code> to the bot.
+  pending_link
+  active
+  disabled
+
+  @@map("channel_state")
+}
+
+enum AlertEvent {
+  opened
+  resolved
+
+  @@map("alert_event")
+}
+
+enum DeliveryState {
+  pending
+  sent
+  suppressed
+  failed
+
+  @@map("delivery_state")
+}
+
 enum CheckError {
   status
   timeout
@@ -90,8 +122,9 @@ model Project {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   monitors Monitor[]
+  channels AlertChannel[]
 
   @@index([ownerId])
   @@map("projects")
@@ -153,9 +186,54 @@ model Incident {
   resolveReason  ResolveReason? @map("resolve_reason")
   note           String?
 
-  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  monitor    Monitor         @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  deliveries AlertDelivery[]
 
   // Plus, in SQL: unique (monitor_id) WHERE resolved_at IS NULL.
   @@index([monitorId, startedAt(sort: Desc)])
   @@map("incidents")
+}
+
+model AlertChannel {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId       String       @map("project_id") @db.Uuid
+  type            ChannelType
+  name            String
+  /// Discord webhook URL or Telegram chat id, encrypted (AES-256-GCM, "v1." format).
+  secretEnc       String?      @map("secret_enc")
+  cooldownMinutes Int          @default(10) @map("cooldown_minutes") @db.SmallInt
+  state           ChannelState @default(active)
+  disabledReason  String?      @map("disabled_reason")
+  /// Telegram linking: SHA-256 of the one-time /start code, and when it expires.
+  linkCodeHash    String?      @unique @map("link_code_hash")
+  linkExpiresAt   DateTime?    @map("link_expires_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveries AlertDelivery[]
+
+  @@index([projectId])
+  @@map("alert_channels")
+}
+
+/// The alert outbox: one row per incident event per channel (docs/ARCHITECTURE.md §3.4).
+model AlertDelivery {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidentId    String        @map("incident_id") @db.Uuid
+  channelId     String        @map("channel_id") @db.Uuid
+  event         AlertEvent
+  state         DeliveryState @default(pending)
+  attempts      Int           @default(0) @db.SmallInt
+  nextAttemptAt DateTime      @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  lastError     String?       @map("last_error")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt        DateTime?     @map("sent_at") @db.Timestamptz(3)
+
+  incident Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  channel  AlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  /// The idempotency key: one delivery per incident event per channel (duplicate-alert layer 3).
+  @@unique([incidentId, channelId, event])
+  @@index([channelId, event, sentAt(sort: Desc)])
+  @@map("alert_deliveries")
 }
