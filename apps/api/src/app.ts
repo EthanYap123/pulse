@@ -8,6 +8,7 @@ import type { PrismaClient } from "./db.js";
 import { registerErrorHandling } from "./errors.js";
 import { createRepositories } from "./repositories/index.js";
 import { authRoutes } from "./routes/auth.js";
+import { incidentRoutes } from "./routes/incidents.js";
 import { monitorRoutes } from "./routes/monitors.js";
 import { projectRoutes } from "./routes/projects.js";
 
@@ -61,6 +62,7 @@ export function buildApp({
     scope.addHook("preHandler", requireAuth(config.jwtSecret));
     projectRoutes(scope, repos, checker);
     monitorRoutes(scope, repos, checker);
+    incidentRoutes(scope, repos);
     done();
   });
 

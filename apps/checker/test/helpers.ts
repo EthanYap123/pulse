@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { CheckerMonitor } from "@pulse/shared";
-import type { CheckerDb } from "../src/db.js";
+import type { CheckerDb, IncidentEvent } from "../src/db.js";
 import type { CheckResult } from "../src/run-checks.js";
 import type { Sql } from "../src/shard-core.js";
 
@@ -24,6 +24,8 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
     statuses: [] as { monitorId: string; status: string; checkedAt: string }[],
     opened: 0,
     failNextInsert: false,
+    events: [] as IncidentEvent[],
+    failEvents: false,
   };
   const open = (): Promise<CheckerDb> => {
     state.opened++;
@@ -41,6 +43,11 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
         return Promise.resolve();
       },
       loadShardMonitors: () => Promise.resolve(state.monitors),
+      writeIncidentEvent: (event) => {
+        if (state.failEvents) return Promise.reject(new Error("database unavailable"));
+        state.events.push(event);
+        return Promise.resolve();
+      },
       close: () => Promise.resolve(),
     });
   };

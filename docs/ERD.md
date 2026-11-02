@@ -123,10 +123,11 @@ erDiagram
 
 ## Migrations
 
-| Migration | Phase | Tables                                                                                           |
-| --------- | ----- | ------------------------------------------------------------------------------------------------ |
-| `init`    | 2     | `users`, `refresh_tokens`, `projects`, `monitors`, `check_results`                               |
-| (next)    | 3     | `incidents`, `check_rollups_hourly`, `check_rollups_daily`, `alert_channels`, `alert_deliveries` |
+| Migration   | Phase | Tables                                                                              |
+| ----------- | ----- | ----------------------------------------------------------------------------------- |
+| `init`      | 2     | `users`, `refresh_tokens`, `projects`, `monitors`, `check_results`                  |
+| `incidents` | 3     | `incidents` (+ partial unique index: one open incident per monitor)                 |
+| (next)      | 3     | `check_rollups_hourly`, `check_rollups_daily`, `alert_channels`, `alert_deliveries` |
 
 Prisma doesn't model CHECK constraints, so they are appended to the migration SQL by hand. `prisma migrate diff` against the schema stays empty.
 

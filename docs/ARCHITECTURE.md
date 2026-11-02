@@ -136,7 +136,7 @@ With a 5-minute interval and threshold 3, an outage is detected 10 to 15 minutes
 
 ### 3.4 Writing incidents and avoiding duplicate alerts
 
-Incidents are rare, so they are written to Neon immediately instead of waiting for the hourly flush. Duplicate alerts are prevented at four layers:
+Incidents are rare, so they are written to Neon immediately instead of waiting for the hourly flush. When a monitor's state machine opens or resolves an incident, the shard appends the event to an `events` table in its SQLite, then writes pending events to Postgres at the end of the same tick, oldest first, within the subrequests the tick has left (50 minus checks minus flush queries, at most 8). If Postgres is unavailable they stay queued and are retried next tick, so an outage that starts while Neon is suspended is still recorded with its true start time. Pausing a monitor resolves its open incident with reason `paused` (both the API and the shard do this; both writes are idempotent) and resets its state to `pending`. Duplicate alerts are prevented at four layers:
 
 1. **Single writer.** A Durable Object processes one tick at a time for its monitors, so two concurrent ticks can never both see "3rd failure" and open two incidents.
 2. **Database constraint.** `incidents` has a partial unique index on `(monitor_id) WHERE resolved_at IS NULL`. Opening an incident is `INSERT ... ON CONFLICT DO NOTHING RETURNING id`; if nothing is returned, the incident already exists and no alert is queued.

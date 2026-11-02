@@ -7,7 +7,7 @@ import {
   type MonitorState,
 } from "@pulse/shared";
 import type { Decrypt } from "./crypto.js";
-import type { CheckerDb } from "./db.js";
+import type { CheckerDb, IncidentEvent } from "./db.js";
 import { runChecks, type CheckDeps, type CheckJob, type CheckResult } from "./run-checks.js";
 
 /** The subset of the Durable Object SQLite API the shard needs, so tests can use node:sqlite. */
@@ -31,9 +31,22 @@ type StoredState = MonitorState & {
 /** A tick that started this long ago and never finished is treated as dead. */
 const STALE_TICK_MS = 4 * 60 * 1000;
 
+/** Workers Free: outbound requests per invocation (measured, spikes/do-subrequests). */
+const SUBREQUESTS_PER_INVOCATION = 50;
+/** Queries the hourly flush makes: insert results, update statuses, load config. */
+const FLUSH_QUERIES = 3;
+/** Incident writes per tick at most; the rest wait for the next tick. */
+const MAX_EVENT_WRITES_PER_TICK = 8;
+
 export type TickResult =
   | { kind: "skipped"; reason: "tick_in_progress" }
-  | { kind: "done"; checked: number; flushed: number | null; overCap: number };
+  | {
+      kind: "done";
+      checked: number;
+      flushed: number | null;
+      overCap: number;
+      incidentEventsWritten: number;
+    };
 
 /**
  * One checker shard (docs/ARCHITECTURE.md §3). Holds its monitors' config and state and
@@ -49,11 +62,17 @@ export class ShardCore {
     // One row per tick (a JSON array), not per check: keeps SQLite row writes low.
     sql.run(`CREATE TABLE IF NOT EXISTS buffer (tick_at TEXT PRIMARY KEY, results TEXT NOT NULL)`);
     sql.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    // Incident opens/resolves waiting to be written to Postgres, in the order they happened.
+    sql.run(
+      `CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, monitor_id TEXT NOT NULL, data TEXT NOT NULL)`,
+    );
   }
 
   // Config ---------------------------------------------------------------------
 
   upsert(monitor: CheckerMonitor): void {
+    const previous = this.config(monitor.id);
+    if (monitor.isPaused && previous && !previous.isPaused) this.onPaused(monitor.id);
     this.sql.run(
       `INSERT INTO monitors (id, config) VALUES (?, ?)
        ON CONFLICT (id) DO UPDATE SET config = excluded.config`,
@@ -65,6 +84,34 @@ export class ShardCore {
   remove(monitorId: string): void {
     this.sql.run(`DELETE FROM monitors WHERE id = ?`, monitorId);
     this.sql.run(`DELETE FROM state WHERE id = ?`, monitorId);
+    // Its incidents are deleted with it in Postgres, so pending writes are moot.
+    this.sql.run(`DELETE FROM events WHERE monitor_id = ?`, monitorId);
+  }
+
+  /**
+   * Pausing ends any open incident (reason "paused") and forgets the monitor's state, so
+   * resuming starts fresh at "pending". The API resolves the incident too; both are idempotent.
+   */
+  private onPaused(monitorId: string): void {
+    const state = this.state(monitorId);
+    this.sql.run(`DELETE FROM events WHERE monitor_id = ?`, monitorId);
+    if (state.status === "down" || state.status === "recovering") {
+      this.enqueue({
+        type: "resolved",
+        monitorId,
+        resolvedAt: new Date(this.deps.now()).toISOString(),
+        reason: "paused",
+      });
+    }
+    this.sql.run(`DELETE FROM state WHERE id = ?`, monitorId);
+  }
+
+  private config(monitorId: string): CheckerMonitor | null {
+    const row = this.sql.all<{ config: string }>(
+      `SELECT config FROM monitors WHERE id = ?`,
+      monitorId,
+    )[0];
+    return row ? (JSON.parse(row.config) as CheckerMonitor) : null;
   }
 
   /** Makes this shard's config exactly match `monitors` (Postgres is the source of truth). */
@@ -112,9 +159,17 @@ export class ShardCore {
         );
       }
 
-      const flushed =
-        new Date(scheduledTime).getUTCMinutes() === 0 ? (await this.flush()).flushed : null;
-      return { kind: "done", checked: results.length, flushed, overCap };
+      // Incidents go to Postgres now; check results wait for the hourly flush. Each write is
+      // a subrequest, so only what's left of this invocation's 50 is used.
+      const isFlushTick = new Date(scheduledTime).getUTCMinutes() === 0;
+      const spare =
+        SUBREQUESTS_PER_INVOCATION - results.length - (isFlushTick ? FLUSH_QUERIES : 0) - 1;
+      const incidentEventsWritten = await this.writeEvents(
+        Math.min(MAX_EVENT_WRITES_PER_TICK, spare),
+      );
+
+      const flushed = isFlushTick ? (await this.flush()).flushed : null;
+      return { kind: "done", checked: results.length, flushed, overCap, incidentEventsWritten };
     } finally {
       this.sql.run(`DELETE FROM meta WHERE key = 'tick_started_at'`);
     }
@@ -157,8 +212,67 @@ export class ShardCore {
       monitor.id,
       JSON.stringify(stored),
     );
-    // Incidents and alerts are written from these events in Phase 3.
-    if (step.event) this.deps.log({ msg: step.event.type, monitorId: monitor.id, ...step.event });
+    if (step.event?.type === "incident_opened") {
+      this.enqueue({
+        type: "opened",
+        monitorId: monitor.id,
+        startedAt: step.event.startedAt,
+        cause: result.error ?? "status",
+        lastStatusCode: result.statusCode,
+      });
+    } else if (step.event?.type === "incident_resolved") {
+      this.enqueue({
+        type: "resolved",
+        monitorId: monitor.id,
+        resolvedAt: step.event.resolvedAt,
+        reason: "recovered",
+      });
+    }
+  }
+
+  private enqueue(event: IncidentEvent): void {
+    this.sql.run(
+      `INSERT INTO events (monitor_id, data) VALUES (?, ?)`,
+      event.monitorId,
+      JSON.stringify(event),
+    );
+    this.deps.log({ msg: `incident ${event.type}`, ...event });
+  }
+
+  /**
+   * Writes up to `limit` pending incident events to Postgres, oldest first. Stops at the
+   * first failure so events for a monitor are never applied out of order; the rest are
+   * retried on the next tick.
+   */
+  async writeEvents(limit: number): Promise<number> {
+    if (limit <= 0) return 0;
+    const pending = this.sql.all<{ seq: number; data: string }>(
+      `SELECT seq, data FROM events ORDER BY seq LIMIT ?`,
+      limit,
+    );
+    if (pending.length === 0) return 0;
+    let written = 0;
+    try {
+      const db = await this.deps.openDb();
+      try {
+        for (const row of pending) {
+          await db.writeIncidentEvent(JSON.parse(row.data) as IncidentEvent);
+          this.sql.run(`DELETE FROM events WHERE seq = ?`, row.seq);
+          written++;
+        }
+      } finally {
+        await db.close();
+      }
+    } catch (error) {
+      this.deps.log({ msg: "incident write failed", shard: this.deps.shard, error: String(error) });
+    }
+    return written;
+  }
+
+  pendingEvents(): IncidentEvent[] {
+    return this.sql
+      .all<{ data: string }>(`SELECT data FROM events ORDER BY seq`)
+      .map((row) => JSON.parse(row.data) as IncidentEvent);
   }
 
   private state(monitorId: string): StoredState {

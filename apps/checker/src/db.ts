@@ -1,5 +1,16 @@
-import type { CheckerMonitor } from "@pulse/shared";
+import type { CheckError, CheckerMonitor } from "@pulse/shared";
 import type { CheckResult } from "./run-checks.js";
+
+/** A state change that must reach Postgres straight away (docs/ARCHITECTURE.md §3.4). */
+export type IncidentEvent =
+  | {
+      type: "opened";
+      monitorId: string;
+      startedAt: string;
+      cause: CheckError;
+      lastStatusCode: number | null;
+    }
+  | { type: "resolved"; monitorId: string; resolvedAt: string; reason: "recovered" | "paused" };
 
 /**
  * Every query the checker makes to Postgres. Two drivers run the same SQL: Neon's HTTP
@@ -10,6 +21,8 @@ export interface CheckerDb {
   insertResults(rows: CheckResult[]): Promise<void>;
   updateStatuses(rows: { monitorId: string; status: string; checkedAt: string }[]): Promise<void>;
   loadShardMonitors(shard: number): Promise<CheckerMonitor[]>;
+  /** Opens or resolves an incident. Idempotent: replaying an event changes nothing. */
+  writeIncidentEvent(event: IncidentEvent): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -35,6 +48,19 @@ SELECT id, shard, url, method::text AS method, expected_status_min, expected_sta
 FROM monitors
 WHERE shard = $1
 ORDER BY id`;
+
+// ON CONFLICT targets the partial unique index "one open incident per monitor", so a second
+// "opened" for the same outage is a no-op. EXISTS skips monitors deleted since the check.
+const OPEN_INCIDENT = `
+INSERT INTO incidents (monitor_id, started_at, cause, last_status_code)
+SELECT $1::uuid, $2::timestamptz, $3::check_error, $4::smallint
+WHERE EXISTS (SELECT 1 FROM monitors WHERE id = $1::uuid)
+ON CONFLICT (monitor_id) WHERE resolved_at IS NULL DO NOTHING`;
+
+const RESOLVE_INCIDENT = `
+UPDATE incidents
+SET resolved_at = greatest($2::timestamptz, started_at), resolve_reason = $3::resolve_reason
+WHERE monitor_id = $1::uuid AND resolved_at IS NULL`;
 
 export function createCheckerDb(query: Query, close: () => Promise<void>): CheckerDb {
   return {
@@ -72,6 +98,19 @@ export function createCheckerDb(query: Query, close: () => Promise<void>): Check
         encryptedHeaders: (r.headers ?? {}) as Record<string, string>,
         isPaused: Boolean(r.is_paused),
       }));
+    },
+
+    async writeIncidentEvent(event) {
+      if (event.type === "opened") {
+        await query(OPEN_INCIDENT, [
+          event.monitorId,
+          event.startedAt,
+          event.cause,
+          event.lastStatusCode,
+        ]);
+      } else {
+        await query(RESOLVE_INCIDENT, [event.monitorId, event.resolvedAt, event.reason]);
+      }
     },
 
     close,
