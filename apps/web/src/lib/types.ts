@@ -35,6 +35,20 @@ export type Monitor = {
   lastCheckedAt: string | null;
   lastLatencyMs: number | null;
   statusSource: "live" | "last_flush";
+  openIncidentId: string | null;
+};
+
+export type Incident = {
+  id: string;
+  monitorId: string;
+  monitorName: string;
+  startedAt: string;
+  resolvedAt: string | null;
+  durationSec: number | null;
+  cause: "status" | "timeout" | "dns" | "tls" | "connection";
+  lastStatusCode: number | null;
+  resolveReason: "recovered" | "paused" | "deleted" | null;
+  note: string | null;
 };
 
 export type HistoryRange = "24h" | "7d" | "30d";

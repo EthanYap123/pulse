@@ -35,7 +35,7 @@ function toMonitor(m: MonitorRow, live: LiveStatus | undefined) {
     status: m.isPaused ? "paused" : (live?.status ?? m.lastStatus),
     lastCheckedAt: live?.lastCheckedAt ?? m.lastCheckedAt?.toISOString() ?? null,
     lastLatencyMs: live?.lastLatencyMs ?? null,
-    openIncidentId: null,
+    openIncidentId: m.incidents[0]?.id ?? null,
     statusSource: live ? "live" : "last_flush",
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),

@@ -66,7 +66,13 @@ describe("ShardCore.tick", () => {
     const db = fakeDb([monitor({ id: idFor(1) }), monitor({ id: idFor(2) })]);
     const { core, fetch } = setup({ db });
     const result = await core.tick(TICK);
-    expect(result).toEqual({ kind: "done", checked: 2, flushed: null, overCap: 0 });
+    expect(result).toEqual({
+      kind: "done",
+      checked: 2,
+      flushed: null,
+      overCap: 0,
+      incidentEventsWritten: 0,
+    });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(core.pendingResults()).toBe(2);
     // Nothing written to Postgres until the hourly flush.
@@ -193,5 +199,105 @@ describe("ShardCore.live", () => {
     expect(status).toMatchObject({ monitorId: monitor().id, status: "up" });
     expect(status?.lastCheckedAt).toEqual(expect.any(String));
     expect(status?.lastLatencyMs).toEqual(expect.any(Number));
+  });
+});
+
+describe("ShardCore incidents", () => {
+  const FIVE_MIN = 5 * 60_000;
+
+  it("writes an opened incident straight away, with the first failure as its start", async () => {
+    const db = fakeDb();
+    const { core, seed } = setup({ db, status: 503 });
+    seed(monitor({ failureThreshold: 2 }));
+    await core.tick(TICK);
+    expect(db.state.events).toEqual([]);
+    await core.tick(TICK + FIVE_MIN);
+    expect(db.state.events).toHaveLength(1);
+    expect(db.state.events[0]).toMatchObject({
+      type: "opened",
+      monitorId: monitor().id,
+      cause: "status",
+      lastStatusCode: 503,
+    });
+    // The first failure was the 12:05 tick, not the second (threshold) failure.
+    expect(db.state.events[0]?.type === "opened" && db.state.events[0].startedAt).toMatch(
+      /^2026-11-01T12:05/,
+    );
+    expect(core.pendingEvents()).toEqual([]);
+  });
+
+  it("writes a resolved incident after two successes", async () => {
+    const db = fakeDb();
+    let status = 503;
+    const { core, seed } = setup({ db, status: () => status });
+    seed(monitor({ failureThreshold: 1 }));
+    await core.tick(TICK);
+    status = 200;
+    await core.tick(TICK + FIVE_MIN);
+    await core.tick(TICK + 2 * FIVE_MIN);
+    expect(db.state.events.map((e) => e.type)).toEqual(["opened", "resolved"]);
+    expect(db.state.events[1]).toMatchObject({ reason: "recovered" });
+  });
+
+  it("keeps events when Postgres is down and writes them in order on a later tick", async () => {
+    const db = fakeDb();
+    let status = 503;
+    const { core, seed } = setup({ db, status: () => status });
+    seed(monitor({ failureThreshold: 1 }));
+    db.state.failEvents = true;
+    await core.tick(TICK);
+    status = 200;
+    await core.tick(TICK + FIVE_MIN);
+    await core.tick(TICK + 2 * FIVE_MIN);
+    expect(core.pendingEvents().map((e) => e.type)).toEqual(["opened", "resolved"]);
+
+    db.state.failEvents = false;
+    await core.tick(TICK + 3 * FIVE_MIN);
+    expect(db.state.events.map((e) => e.type)).toEqual(["opened", "resolved"]);
+    expect(core.pendingEvents()).toEqual([]);
+  });
+
+  it("doesn't open the database when there is nothing to write", async () => {
+    const db = fakeDb([monitor()]);
+    const { core } = setup({ db });
+    await core.tick(TICK); // first tick reconciles: one open
+    await core.tick(TICK + FIVE_MIN);
+    expect(db.state.opened).toBe(1);
+  });
+
+  it("stays inside the subrequest budget on a full shard", async () => {
+    const db = fakeDb();
+    const { core, seed } = setup({ db, status: 503 });
+    const monitors = Array.from({ length: 40 }, (_, i) =>
+      monitor({ id: idFor(i), failureThreshold: 1 }),
+    );
+    seed(...monitors);
+    // 40 checks + 3 flush queries leaves 6 writes (50 - 40 - 3 - 1).
+    const result = await core.tick(HOURLY);
+    expect(result).toMatchObject({ checked: 40, incidentEventsWritten: 6 });
+    expect(core.pendingEvents()).toHaveLength(34);
+  });
+
+  it("resolves an open incident as paused, and resets state, when the monitor is paused", async () => {
+    const db = fakeDb();
+    const { core, seed } = setup({ db, status: 503 });
+    seed(monitor({ failureThreshold: 1 }));
+    await core.tick(TICK);
+    core.upsert(monitor({ failureThreshold: 1, isPaused: true }));
+    expect(core.pendingEvents()).toEqual([
+      expect.objectContaining({ type: "resolved", reason: "paused" }),
+    ]);
+    core.upsert(monitor({ failureThreshold: 1, isPaused: false }));
+    expect(core.live([monitor().id])[0]?.status).toBe("pending");
+  });
+
+  it("drops pending events for a deleted monitor", async () => {
+    const db = fakeDb();
+    const { core, seed } = setup({ db, status: 503 });
+    seed(monitor({ failureThreshold: 1 }));
+    db.state.failEvents = true;
+    await core.tick(TICK);
+    core.remove(monitor().id);
+    expect(core.pendingEvents()).toEqual([]);
   });
 });

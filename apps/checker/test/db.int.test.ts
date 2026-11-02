@@ -115,3 +115,77 @@ describe("CheckerDb against Postgres", () => {
     expect(rows[0]).toEqual({ n: 0 });
   });
 });
+
+describe("incident events against Postgres", () => {
+  const STARTED = "2026-11-01T12:00:00.000Z";
+
+  async function incidents() {
+    const { rows } = await admin.query(
+      `SELECT monitor_id, started_at, resolved_at, cause::text, last_status_code, resolve_reason::text
+       FROM incidents ORDER BY started_at`,
+    );
+    return rows;
+  }
+
+  it("opens one incident however many times the event is replayed", async () => {
+    const opened = {
+      type: "opened" as const,
+      monitorId: MONITOR_A,
+      startedAt: STARTED,
+      cause: "timeout" as const,
+      lastStatusCode: null,
+    };
+    await db.writeIncidentEvent(opened);
+    await db.writeIncidentEvent(opened);
+    expect(await incidents()).toEqual([
+      {
+        monitor_id: MONITOR_A,
+        started_at: new Date(STARTED),
+        resolved_at: null,
+        cause: "timeout",
+        last_status_code: null,
+        resolve_reason: null,
+      },
+    ]);
+  });
+
+  it("resolves the open incident, and a later outage opens a new one", async () => {
+    const open = (startedAt: string) =>
+      db.writeIncidentEvent({
+        type: "opened",
+        monitorId: MONITOR_A,
+        startedAt,
+        cause: "status",
+        lastStatusCode: 502,
+      });
+    await open(STARTED);
+    const resolved = {
+      type: "resolved" as const,
+      monitorId: MONITOR_A,
+      resolvedAt: "2026-11-01T12:20:00.000Z",
+      reason: "recovered" as const,
+    };
+    await db.writeIncidentEvent(resolved);
+    await db.writeIncidentEvent(resolved); // replay: nothing left open to resolve
+    await open("2026-11-01T13:00:00.000Z");
+
+    const rows = await incidents();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      resolved_at: new Date("2026-11-01T12:20:00.000Z"),
+      resolve_reason: "recovered",
+    });
+    expect(rows[1]).toMatchObject({ resolved_at: null, last_status_code: 502 });
+  });
+
+  it("ignores events for a monitor deleted since the check", async () => {
+    await db.writeIncidentEvent({
+      type: "opened",
+      monitorId: "00000000-0000-4000-8000-0000000000ff",
+      startedAt: STARTED,
+      cause: "dns",
+      lastStatusCode: null,
+    });
+    expect(await incidents()).toEqual([]);
+  });
+});

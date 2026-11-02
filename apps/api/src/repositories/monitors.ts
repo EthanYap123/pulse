@@ -12,6 +12,11 @@ export type ChangeMonitorResult = { kind: "updated" } | { kind: "not_found" } | 
 
 const owned = (ownerId: string, id: string) => ({ id, project: { ownerId } });
 
+/** Adds the id of the monitor's open incident, if any (at most one, by the partial index). */
+const withOpenIncident = {
+  incidents: { where: { resolvedAt: null }, select: { id: true }, take: 1 },
+} as const;
+
 /** Every query is scoped to the owner through the project (docs/adr/0003-multi-tenancy.md). */
 export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
   function encryptHeaders(headers: Record<string, string>): Record<string, string> {
@@ -45,13 +50,13 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
     async listByProject(ownerId: string, projectId: string) {
       const project = await prisma.project.findFirst({
         where: { id: projectId, ownerId },
-        select: { monitors: { orderBy: { createdAt: "asc" } } },
+        select: { monitors: { orderBy: { createdAt: "asc" }, include: withOpenIncident } },
       });
       return project?.monitors ?? null;
     },
 
     get(ownerId: string, id: string) {
-      return prisma.monitor.findFirst({ where: owned(ownerId, id) });
+      return prisma.monitor.findFirst({ where: owned(ownerId, id), include: withOpenIncident });
     },
 
     create(ownerId: string, projectId: string, input: MonitorInput): Promise<CreateMonitorResult> {
@@ -98,6 +103,14 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
           return { kind: "limit_reached", limit: "active_monitors" } as const;
         }
         await tx.monitor.update({ where: { id }, data: { isPaused: paused } });
+        // A paused monitor isn't checked, so an open incident would never resolve on its own.
+        // greatest(): never before the start, even if the checker's clock ran ahead.
+        if (paused) {
+          await tx.$executeRaw`
+            UPDATE incidents
+            SET resolved_at = greatest(now(), started_at), resolve_reason = 'paused'
+            WHERE monitor_id = ${id}::uuid AND resolved_at IS NULL`;
+        }
         return { kind: "updated" } as const;
       });
     },

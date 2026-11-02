@@ -1,5 +1,6 @@
 import type { Cipher } from "../crypto.js";
 import type { PrismaClient } from "../generated/prisma/client.js";
+import { incidentsRepository } from "./incidents.js";
 import { monitorsRepository } from "./monitors.js";
 import { projectsRepository } from "./projects.js";
 import { refreshTokensRepository } from "./refresh-tokens.js";
@@ -12,6 +13,7 @@ export function createRepositories(prisma: PrismaClient, cipher: Cipher) {
     refreshTokens: refreshTokensRepository(prisma),
     projects: projectsRepository(prisma),
     monitors: monitorsRepository(prisma, cipher),
+    incidents: incidentsRepository(prisma),
     health: {
       async ping(): Promise<void> {
         await prisma.$queryRaw`SELECT 1`;

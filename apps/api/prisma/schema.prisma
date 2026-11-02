@@ -1,5 +1,5 @@
-// Phase 2 tables from docs/ERD.md. Incidents, rollups and alert tables arrive in Phase 3.
-// CHECK constraints live in the migration SQL (Prisma doesn't model them).
+// Tables from docs/ERD.md. CHECK constraints and partial indexes live in the migration SQL
+// (Prisma doesn't model them).
 
 generator client {
   provider            = "prisma-client"
@@ -28,6 +28,14 @@ enum MonitorStatus {
   paused
 
   @@map("monitor_status")
+}
+
+enum ResolveReason {
+  recovered
+  paused
+  deleted
+
+  @@map("resolve_reason")
 }
 
 enum CheckError {
@@ -112,6 +120,7 @@ model Monitor {
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   checkResults CheckResult[]
+  incidents    Incident[]
 
   @@index([projectId])
   @@index([shard])
@@ -130,4 +139,23 @@ model CheckResult {
 
   @@id([monitorId, checkedAt])
   @@map("check_results")
+}
+
+model Incident {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  monitorId      String         @map("monitor_id") @db.Uuid
+  /// Time of the first failed check in the run that opened the incident.
+  startedAt      DateTime       @map("started_at") @db.Timestamptz(3)
+  /// Time of the first successful check of the recovery. Null while open.
+  resolvedAt     DateTime?      @map("resolved_at") @db.Timestamptz(3)
+  cause          CheckError
+  lastStatusCode Int?           @map("last_status_code") @db.SmallInt
+  resolveReason  ResolveReason? @map("resolve_reason")
+  note           String?
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  // Plus, in SQL: unique (monitor_id) WHERE resolved_at IS NULL.
+  @@index([monitorId, startedAt(sort: Desc)])
+  @@map("incidents")
 }

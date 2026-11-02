@@ -5,10 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
+import { IncidentList } from "@/components/IncidentList";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ApiError } from "@/lib/api";
 import { formatMs, timeAgo } from "@/lib/format";
-import type { Monitor, Project } from "@/lib/types";
+import type { Incident, Monitor, Project } from "@/lib/types";
 import { field } from "@/lib/forms";
 import { useData } from "@/lib/use-data";
 
@@ -22,11 +23,12 @@ function ProjectView({ projectId }: { projectId: string }) {
   const data = useData(
     projectId,
     async () => {
-      const [project, list] = await Promise.all([
+      const [project, list, incidents] = await Promise.all([
         api.get<Project>(`/projects/${projectId}`),
         api.get<{ items: Monitor[] }>(`/projects/${projectId}/monitors`),
+        api.get<{ items: Incident[] }>(`/projects/${projectId}/incidents?limit=10`),
       ]);
-      return { project, monitors: list.items };
+      return { project, monitors: list.items, incidents: incidents.items };
     },
     REFRESH_MS,
   );
@@ -67,7 +69,16 @@ function ProjectView({ projectId }: { projectId: string }) {
       </main>
     );
   }
-  const { project, monitors } = data.data;
+  const { project, monitors, incidents } = data.data;
+
+  function editNote(incident: Incident) {
+    const note = window.prompt(
+      "Note (shown with the incident, max 500 characters)",
+      incident.note ?? "",
+    );
+    if (note === null) return;
+    void run(() => api.patch(`/incidents/${incident.id}`, { note }));
+  }
 
   async function deleteProject() {
     if (!window.confirm(`Delete ${project.name} and all its monitors and history?`)) return;
@@ -102,7 +113,9 @@ function ProjectView({ projectId }: { projectId: string }) {
               </div>
               <div className="monitor-meta small">
                 <span>{formatMs(m.lastLatencyMs)}</span>
-                <span className="muted">checked {timeAgo(m.lastCheckedAt)}</span>
+                <span className="muted">
+                  {m.isPaused ? "not checked while paused" : `checked ${timeAgo(m.lastCheckedAt)}`}
+                </span>
               </div>
               <div className="monitor-actions">
                 <button
@@ -158,6 +171,11 @@ function ProjectView({ projectId }: { projectId: string }) {
             {error}
           </p>
         )}
+      </section>
+
+      <section className="card">
+        <h2>Incidents</h2>
+        <IncidentList incidents={incidents} onEditNote={editNote} />
       </section>
 
       <section className="danger-zone">

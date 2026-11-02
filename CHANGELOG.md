@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Incidents: opened and resolved by the checker in real time, one open per monitor, resolved on pause, listed in the API and dashboard with notes.
 - Coverage thresholds enforced in CI: shared 80%, web lib 80%, API 90%, checker 85%, with reports as artifacts.
 - Dashboard: sign-up/login, projects, monitors with live status, latency chart (24h/7d/30d), light/dark/match-device theme, waking-API banner.
 - Checker: cron-driven HTTP checks in 5 Durable Object shards, monitor state machine, hourly flush to Postgres, config sync and live status from the API, and a check-history endpoint.
