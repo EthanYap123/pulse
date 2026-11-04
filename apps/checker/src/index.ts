@@ -3,9 +3,14 @@ import type { Env } from "./env.js";
 import { createRouter } from "./routes.js";
 
 export { Shard } from "./shard.js";
+export { Snapshots } from "./snapshots.js";
 
 function shardStub(env: Env, index: number) {
   return env.SHARD.get(env.SHARD.idFromName(`shard-${index}`));
+}
+
+function snapshotsStub(env: Env) {
+  return env.SNAPSHOTS.get(env.SNAPSHOTS.idFromName("all"));
 }
 
 export default {
@@ -14,6 +19,11 @@ export default {
       shardCount: LIMITS.shards,
       hmacSecret: env.CHECKER_HMAC_SECRET,
       environment: env.ENVIRONMENT ?? "local",
+      snapshots: {
+        get: (slug) => snapshotsStub(env).get(slug),
+        rebuildAll: () => snapshotsStub(env).rebuildAll(),
+        refreshProjects: (ids) => snapshotsStub(env).refreshProjects(ids),
+      },
       shard: (i) => {
         const stub = shardStub(env, i);
         return {
@@ -34,6 +44,14 @@ export default {
         shardStub(env, i).tick(i, controller.scheduledTime),
       ),
     );
+    // Hourly, once the shards have flushed: rebuild the status pages from Postgres.
+    if (new Date(controller.scheduledTime).getUTCMinutes() === 0) {
+      await snapshotsStub(env)
+        .rebuildAll()
+        .catch((error: unknown) => {
+          console.log(JSON.stringify({ msg: "snapshot rebuild failed", error: String(error) }));
+        });
+    }
     console.log(
       JSON.stringify({
         msg: "tick",

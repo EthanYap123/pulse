@@ -100,7 +100,24 @@ function ProjectView({ projectId }: { projectId: string }) {
       </p>
       <div className="page-head">
         <h1>{project.name}</h1>
-        <p className="muted small">Status page /status/{project.slug} arrives in Phase 3</p>
+        <p className="small status-link">
+          {project.isPublic ? (
+            <Link href={`/status/${project.slug}`} target="_blank">
+              Public status page: /status/{project.slug}
+            </Link>
+          ) : (
+            <span className="muted">Status page is private</span>
+          )}
+          <button
+            type="button"
+            className="button button-quiet button-small"
+            onClick={() =>
+              void run(() => api.patch(`/projects/${projectId}`, { isPublic: !project.isPublic }))
+            }
+          >
+            {project.isPublic ? "Make private" : "Make public"}
+          </button>
+        </p>
       </div>
 
       {monitors.length === 0 ? (
@@ -133,6 +150,17 @@ function ProjectView({ projectId }: { projectId: string }) {
                   }
                 >
                   {m.isPaused ? "Resume" : "Pause"}
+                </button>
+                <button
+                  type="button"
+                  className="button button-quiet button-small"
+                  onClick={() =>
+                    void run(() =>
+                      api.patch(`/monitors/${m.id}`, { showOnStatusPage: !m.showOnStatusPage }),
+                    )
+                  }
+                >
+                  {m.showOnStatusPage ? "Hide from page" : "Show on page"}
                 </button>
                 <button
                   type="button"

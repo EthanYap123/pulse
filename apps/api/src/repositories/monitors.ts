@@ -115,11 +115,14 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
       });
     },
 
-    /** Returns the deleted monitor's shard (so the checker can drop it), or null if not found. */
-    async delete(ownerId: string, id: string): Promise<{ shard: number } | null> {
+    /** Returns where the deleted monitor lived (so the checker can drop it), or null if not found. */
+    async delete(
+      ownerId: string,
+      id: string,
+    ): Promise<{ shard: number; projectId: string } | null> {
       const monitor = await prisma.monitor.findFirst({
         where: owned(ownerId, id),
-        select: { shard: true },
+        select: { shard: true, projectId: true },
       });
       if (!monitor) return null;
       const { count } = await prisma.monitor.deleteMany({ where: owned(ownerId, id) });

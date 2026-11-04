@@ -56,6 +56,8 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
         state.deliveryUpdates.push(...rows);
         return Promise.resolve();
       },
+      loadStatusData: () => Promise.resolve({ monitors: [], days: [], incidents: [] }),
+      projectIdsForMonitors: () => Promise.resolve([]),
       disableChannels: (rows) => {
         state.disabledChannels.push(...rows);
         return Promise.resolve();

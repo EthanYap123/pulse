@@ -6,4 +6,5 @@ export * from "./limits.js";
 export * from "./monitor-state.js";
 export * from "./resources.js";
 export * from "./shard.js";
+export * from "./status-page.js";
 export * from "./url.js";

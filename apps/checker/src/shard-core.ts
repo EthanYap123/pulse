@@ -25,6 +25,8 @@ export type ShardDeps = CheckDeps & {
   openDb: () => Promise<CheckerDb>;
   decrypt: Decrypt | null;
   log: (entry: Record<string, unknown>) => void;
+  /** Tells the status pages of these monitors to refresh their incident lists. */
+  refreshStatusPages?: (monitorIds: string[]) => Promise<void>;
 };
 
 type AlertRow = {
@@ -286,6 +288,7 @@ export class ShardCore {
     );
     if (pending.length === 0) return 0;
     let written = 0;
+    const changed = new Set<string>();
     try {
       const db = await this.deps.openDb();
       try {
@@ -294,6 +297,7 @@ export class ShardCore {
           const jobs = await db.writeIncidentEvent(event);
           this.sql.run(`DELETE FROM events WHERE seq = ?`, row.seq);
           for (const job of jobs) this.queueAlert(event.monitorId, job);
+          changed.add(event.monitorId);
           written++;
         }
       } finally {
@@ -301,6 +305,13 @@ export class ShardCore {
       }
     } catch (error) {
       this.deps.log({ msg: "incident write failed", shard: this.deps.shard, error: String(error) });
+    }
+    if (changed.size > 0) {
+      // One subrequest, already reserved by the budget in tick(). A failure only delays
+      // the incident list until the hourly rebuild; live status is unaffected.
+      await this.deps.refreshStatusPages?.([...changed]).catch((error: unknown) => {
+        this.deps.log({ msg: "status page refresh failed", error: String(error) });
+      });
     }
     return written;
   }

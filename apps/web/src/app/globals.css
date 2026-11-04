@@ -539,3 +539,109 @@ select {
   color: var(--up);
   margin: 0.5rem 0 0;
 }
+
+/* Public status page ------------------------------------------------------- */
+
+.overall {
+  font-size: 1.125rem;
+  font-weight: 600;
+  padding: 0.875rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid currentColor;
+  background: var(--surface);
+}
+
+.overall-operational {
+  color: var(--up);
+}
+
+.overall-degraded {
+  color: var(--warn);
+}
+
+.overall-outage {
+  color: var(--down);
+}
+
+.overall-unknown {
+  color: var(--paused);
+}
+
+.status-monitor {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.status-monitor-head,
+.status-monitor-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 2.25rem;
+}
+
+/* Height as well as colour: worse days are visibly shorter, no-data days are slivers. */
+.bar {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  cursor: default;
+  height: 100%;
+}
+
+.bar-perfect {
+  background: var(--up);
+}
+
+.bar-good {
+  background: color-mix(in srgb, var(--up) 45%, var(--warn));
+  height: 85%;
+}
+
+.bar-degraded {
+  background: var(--warn);
+  height: 65%;
+}
+
+.bar-poor {
+  background: var(--down);
+  height: 45%;
+}
+
+.bar-none {
+  background: var(--border);
+  height: 20%;
+}
+
+.bars-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.bars-readout {
+  margin: 0.25rem 0 0;
+  min-height: 1.5em;
+}
+
+.status-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.monitor-actions {
+  flex-wrap: wrap;
+}

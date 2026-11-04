@@ -100,7 +100,10 @@ export function monitorRoutes(
   /** Pushes the stored config to the checker after a change. */
   async function sync(userId: string, id: string): Promise<void> {
     const monitor = await repos.monitors.get(userId, id);
-    if (monitor && checker) await checker.sync(toCheckerMonitor(monitor));
+    if (monitor && checker) {
+      await checker.sync(toCheckerMonitor(monitor));
+      await checker.refreshStatusPages([monitor.projectId]);
+    }
   }
 
   app.get("/v1/projects/:projectId/monitors", async (request) => {
@@ -171,6 +174,7 @@ export function monitorRoutes(
     const deleted = await repos.monitors.delete(request.userId, id);
     if (!deleted) throw notFound();
     await checker?.remove(id, deleted.shard);
+    await checker?.refreshStatusPages([deleted.projectId]);
     return reply.code(204).send();
   });
 }

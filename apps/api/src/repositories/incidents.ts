@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "../generated/prisma/client.js";
 
-const withMonitorName = { monitor: { select: { name: true } } } as const;
+const withMonitorName = { monitor: { select: { name: true, projectId: true } } } as const;
 
 export type IncidentRow = Prisma.IncidentGetPayload<{ include: typeof withMonitorName }>;
 

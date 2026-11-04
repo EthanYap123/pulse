@@ -68,9 +68,11 @@ flowchart LR
 
 ### Public status page
 
-1. `GET /status/<slug>` is a Next.js server component with ISR (`revalidate: 60`).
+1. `GET /status/<slug>` is a Next.js server component cached on demand (ISR, `revalidate: 60`, with an empty `generateStaticParams` so Next treats it as cacheable). Most visits run no code at all: measured locally, 10 visits caused 1 request to the checker. It sits outside the `(app)` route group, so nothing on it signs in or calls the API.
 2. It fetches **one JSON document** from the checker: `GET /public/v1/status/<slug>`. That document merges the hourly snapshot (90-day bars, incidents) with each monitor's live state from the shards.
 3. Neither the API nor Neon is on this path, so the page stays fast and available when Render is cold or Neon is asleep or out of compute.
+
+Snapshots aren't only rebuilt hourly: the API asks for a refresh after any change a visitor could see (project, monitor, incident note), and a shard does after writing an incident, so a new project's page exists straight away and an outage is listed within one tick. Neon is already awake in both cases. Monitor URLs and hidden monitors are never put in a snapshot, and a private project has none.
 
 **Decision (asked in the brief): status pages read neither Neon nor the API.** Reading Neon directly from Vercel server components would avoid Render cold starts, but every cache miss would wake Neon for at least 5 minutes, and a popular page could keep it awake all month. Snapshots built during the hourly flush cost one Neon wake per hour no matter how much traffic the pages get. See [ADR-0004](adr/0004-buffer-checks-in-durable-objects.md).
 
@@ -169,7 +171,7 @@ Then the cron Worker (one shard is elected by `hour mod 5`) runs the maintenance
 1. Upsert `check_rollups_hourly` for the last 2 complete hours.
 2. Upsert `check_rollups_daily` for today and yesterday (UTC).
 3. Delete raw checks older than 7 days, hourly rollups older than 30 days, daily rollups and resolved incidents older than 400 days.
-4. Build one status-page snapshot per public project (90 daily bars, 90-day uptime %, last 14 days of incidents) and store them in the Snapshot Durable Object.
+4. Once the shards have flushed, the cron Worker asks the `Snapshots` Durable Object to rebuild one snapshot per public project (90 daily bars, 90-day uptime %, last 14 days of incidents). It has its own subrequest budget and needs 3 queries however many projects there are. If Postgres is unavailable, the old snapshots keep being served. Part 4 of Phase 3 moves the daily figures from raw checks to rollups.
 
 All steps are idempotent upserts or range deletes, so a missed or repeated hour is harmless. Details: [ADR-0002](adr/0002-data-retention-and-rollups.md).
 

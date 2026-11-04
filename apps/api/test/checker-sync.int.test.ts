@@ -10,6 +10,7 @@ import { signUp, type Session } from "./helpers/session.js";
 function fakeChecker() {
   const synced: CheckerMonitor[] = [];
   const removed: { id: string; shard: number }[] = [];
+  const refreshed: string[][] = [];
   const live = new Map<string, LiveStatus>();
   let reachable = true;
   const client: CheckerClient = {
@@ -19,6 +20,10 @@ function fakeChecker() {
     },
     remove: (id, shard) => {
       removed.push({ id, shard });
+      return Promise.resolve(reachable);
+    },
+    refreshStatusPages: (projectIds) => {
+      refreshed.push(projectIds);
       return Promise.resolve(reachable);
     },
     live: (monitors) =>
@@ -32,6 +37,7 @@ function fakeChecker() {
     client,
     synced,
     removed,
+    refreshed,
     live,
     setReachable: (value: boolean) => {
       reachable = value;
@@ -54,6 +60,7 @@ beforeEach(async () => {
   await resetDb(prisma);
   checker.synced.length = 0;
   checker.removed.length = 0;
+  checker.refreshed.length = 0;
   checker.live.clear();
   checker.setReachable(true);
   alice = await signUp(app, "alice@example.com");
@@ -233,5 +240,47 @@ describe("GET /v1/monitors/:id/checks", () => {
       (await alice.request({ method: "GET", url: `/v1/monitors/${id}/checks?range=1y` }))
         .statusCode,
     ).toBe(422);
+  });
+});
+
+describe("refreshing status pages", () => {
+  it("refreshes after every change a visitor could see", async () => {
+    expect(checker.refreshed).toEqual([[projectId]]); // creating the project in beforeEach
+    const { id } = await createMonitor();
+    await alice.request({ method: "PATCH", url: `/v1/monitors/${id}`, payload: { name: "New" } });
+    await alice.request({ method: "POST", url: `/v1/monitors/${id}/pause` });
+    await alice.request({ method: "POST", url: `/v1/monitors/${id}/resume` });
+    await alice.request({
+      method: "PATCH",
+      url: `/v1/projects/${projectId}`,
+      payload: { isPublic: false },
+    });
+    const incident = await prisma.incident.create({
+      data: { monitorId: id, startedAt: new Date(), cause: "dns" },
+    });
+    await alice.request({
+      method: "PATCH",
+      url: `/v1/incidents/${incident.id}`,
+      payload: { note: "x" },
+    });
+    await alice.request({ method: "DELETE", url: `/v1/monitors/${id}` });
+    expect(checker.refreshed).toHaveLength(8);
+    expect(new Set(checker.refreshed.flat())).toEqual(new Set([projectId]));
+  });
+
+  it("refreshes a deleted project, so its page disappears", async () => {
+    checker.refreshed.length = 0;
+    await alice.request({ method: "DELETE", url: `/v1/projects/${projectId}` });
+    expect(checker.refreshed).toEqual([[projectId]]);
+  });
+
+  it("still succeeds when the checker can't be reached", async () => {
+    checker.setReachable(false);
+    const res = await alice.request({
+      method: "PATCH",
+      url: `/v1/projects/${projectId}`,
+      payload: { name: "Renamed" },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

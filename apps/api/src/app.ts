@@ -65,7 +65,7 @@ export function buildApp({
     scope.addHook("preHandler", requireAuth(config.jwtSecret));
     projectRoutes(scope, repos, checker);
     monitorRoutes(scope, repos, checker);
-    incidentRoutes(scope, repos);
+    incidentRoutes(scope, repos, checker);
     channelRoutes(scope, repos, options.alertFetch ?? ((input, init) => fetch(input, init)));
     done();
   });

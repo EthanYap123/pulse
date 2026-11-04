@@ -100,18 +100,18 @@ Retention is enforced by the hourly job. Details in [ADR-0002](adr/0002-data-ret
 
 Source: [Vercel limits](https://vercel.com/docs/limits), [Fair use guidelines](https://vercel.com/docs/limits/fair-use-guidelines)
 
-| Limit                | Hobby                                                        | Notes                                                  |
-| -------------------- | ------------------------------------------------------------ | ------------------------------------------------------ |
-| Use                  | **Non-commercial personal use only**                         | Pulse is a portfolio project with no payments or ads.  |
-| Fast Data Transfer   | 100 GB / month                                               | Status pages are small.                                |
-| Function invocations | 1,000,000 / month                                            | ISR keeps status pages mostly static.                  |
-| Active CPU           | 4 hours / month                                              | Server components only fetch and render.               |
-| Fast Origin Transfer | 10 GB / month                                                |                                                        |
-| Provisioned memory   | 360 GB-hours / month                                         |                                                        |
-| Image optimisation   | 5,000 transformations / month                                | Not used (SVG/CSS only).                               |
-| Deployments          | 100 / day                                                    | Preview deploys per PR are fine.                       |
-| Runtime logs         | Kept 1 hour                                                  | Errors go to Sentry instead.                           |
-| Git repos            | Hobby can't connect repos owned by a GitHub **organisation** | The repo is under a personal account, so this is fine. |
+| Limit                | Hobby                                                        | Notes                                                                        |
+| -------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Use                  | **Non-commercial personal use only**                         | Pulse is a portfolio project with no payments or ads.                        |
+| Fast Data Transfer   | 100 GB / month                                               | Status pages are small.                                                      |
+| Function invocations | 1,000,000 / month                                            | Status pages are cached 60 s by ISR; measured 10 visits = 1 checker request. |
+| Active CPU           | 4 hours / month                                              | Server components only fetch and render.                                     |
+| Fast Origin Transfer | 10 GB / month                                                |                                                                              |
+| Provisioned memory   | 360 GB-hours / month                                         |                                                                              |
+| Image optimisation   | 5,000 transformations / month                                | Not used (SVG/CSS only).                                                     |
+| Deployments          | 100 / day                                                    | Preview deploys per PR are fine.                                             |
+| Runtime logs         | Kept 1 hour                                                  | Errors go to Sentry instead.                                                 |
+| Git repos            | Hobby can't connect repos owned by a GitHub **organisation** | The repo is under a personal account, so this is fine.                       |
 
 ## Render (Free web service)
 
