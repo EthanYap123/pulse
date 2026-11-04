@@ -256,6 +256,7 @@ type StatusPage = {
 | POST   | `/internal/v1/monitors/sync`               | HMAC | `{ monitor: CheckerMonitorConfig }` → `204`                                                                                               |
 | DELETE | `/internal/v1/monitors/:monitorId?shard=N` | HMAC | → `204`                                                                                                                                   |
 | POST   | `/internal/v1/flush`                       | HMAC | Flushes every shard's buffer to Postgres now → `200 { flushed }`. For local development and tests; production flushes on the hourly tick. |
+| POST   | `/internal/v1/snapshots/refresh`           | HMAC | `{ projectIds: string[] }` (1-10) → `204`. Rebuilds those status pages; one that comes back empty (deleted or now private) is removed.    |
 
 HMAC auth: headers `X-Pulse-Timestamp` (unix seconds) and `X-Pulse-Signature: sha256=<hex>` over `timestamp + "." + method + "." + path + "." + body`, with a shared secret. Requests older than 300 s are rejected; comparison is constant-time.
 

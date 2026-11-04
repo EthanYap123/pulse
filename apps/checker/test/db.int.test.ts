@@ -323,3 +323,87 @@ describe("alert deliveries against Postgres", () => {
     await db.disableChannels([]);
   });
 });
+
+describe("status page data against Postgres", () => {
+  it("includes public projects and shown monitors only", async () => {
+    await admin.query(`UPDATE monitors SET show_on_status_page = false WHERE id = $1`, [MONITOR_B]);
+    const data = await db.loadStatusData(null);
+    expect(data.monitors.map((m) => [m.slug, m.monitorId])).toEqual([["checker-test", MONITOR_A]]);
+
+    await admin.query(`UPDATE projects SET is_public = false`);
+    expect((await db.loadStatusData(null)).monitors).toEqual([]);
+  });
+
+  it("keeps a public project with nothing shown", async () => {
+    await admin.query(`UPDATE monitors SET show_on_status_page = false`);
+    const data = await db.loadStatusData(null);
+    expect(data.monitors).toMatchObject([{ slug: "checker-test", monitorId: null, shard: null }]);
+  });
+
+  it("groups checks by UTC day and leaves out hidden monitors", async () => {
+    const recent = new Date(Date.UTC(2026, 10, 1, 23, 59)).toISOString();
+    const nextDay = new Date(Date.UTC(2026, 10, 2, 0, 1)).toISOString();
+    await admin.query(`UPDATE monitors SET show_on_status_page = false WHERE id = $1`, [MONITOR_B]);
+    await db.insertResults([
+      {
+        monitorId: MONITOR_A,
+        checkedAt: recent,
+        ok: true,
+        statusCode: 200,
+        latencyMs: 1,
+        error: null,
+      },
+      {
+        monitorId: MONITOR_A,
+        checkedAt: nextDay,
+        ok: false,
+        statusCode: 500,
+        latencyMs: 1,
+        error: "status",
+      },
+      {
+        monitorId: MONITOR_B,
+        checkedAt: nextDay,
+        ok: true,
+        statusCode: 200,
+        latencyMs: 1,
+        error: null,
+      },
+    ]);
+    const { days } = await db.loadStatusData(null);
+    const sorted = [...days].sort((a, b) => a.day.localeCompare(b.day));
+    expect(sorted).toEqual([
+      { monitorId: MONITOR_A, day: "2026-11-01", checks: 1, failures: 0 },
+      { monitorId: MONITOR_A, day: "2026-11-02", checks: 1, failures: 1 },
+    ]);
+  });
+
+  it("lists open incidents and those from the last 14 days, newest first", async () => {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+    for (const [start, end] of [
+      [daysAgo(20), daysAgo(19)], // too old
+      [daysAgo(5), daysAgo(4)],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO incidents (monitor_id, started_at, resolved_at, cause, resolve_reason)
+         VALUES ($1, $2, $3, 'timeout', 'recovered')`,
+        [MONITOR_A, start, end],
+      );
+    }
+    await admin.query(
+      `INSERT INTO incidents (monitor_id, started_at, cause, note) VALUES ($1, $2, 'dns', 'Looking into it')`,
+      [MONITOR_A, daysAgo(30)], // old, but still open
+    );
+    const { incidents } = await db.loadStatusData(null);
+    expect(incidents.map((i) => i.resolvedAt === null)).toEqual([false, true]);
+    expect(incidents[1]?.note).toBe("Looking into it");
+  });
+
+  it("can load just some projects, and finds a monitor's project", async () => {
+    const [projectId] = await db.projectIdsForMonitors([MONITOR_A, MONITOR_B]);
+    expect((await db.loadStatusData([projectId!])).monitors).toHaveLength(2);
+    expect((await db.loadStatusData(["00000000-0000-4000-8000-0000000000ee"])).monitors).toEqual(
+      [],
+    );
+  });
+});

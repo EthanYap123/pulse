@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { CheckerClient } from "../checker-client.js";
 import { notFound } from "../errors.js";
 import type { IncidentRow } from "../repositories/incidents.js";
 import type { Repositories } from "../repositories/index.js";
@@ -39,7 +40,11 @@ const noteSchema = z.strictObject({
 });
 
 /** Registered inside the authenticated scope in app.ts. */
-export function incidentRoutes(app: FastifyInstance, repos: Repositories): void {
+export function incidentRoutes(
+  app: FastifyInstance,
+  repos: Repositories,
+  checker: CheckerClient | null,
+): void {
   app.get("/v1/projects/:projectId/incidents", async (request) => {
     const filter = listQuerySchema.parse(request.query);
     const page = await repos.incidents.listByProject(
@@ -76,6 +81,9 @@ export function incidentRoutes(app: FastifyInstance, repos: Repositories): void 
     const id = idParam(request.params, "incidentId");
     const { note } = noteSchema.parse(request.body);
     if (!(await repos.incidents.setNote(request.userId, id, note))) throw notFound();
-    return toIncident((await repos.incidents.get(request.userId, id))!);
+    const incident = (await repos.incidents.get(request.userId, id))!;
+    // Notes show on the public status page.
+    await checker?.refreshStatusPages([incident.monitor.projectId]);
+    return toIncident(incident);
   });
 }

@@ -48,6 +48,7 @@ export function projectRoutes(
         },
       );
     }
+    await checker?.refreshStatusPages([result.id]);
     const project = await repos.projects.get(request.userId, result.id);
     return reply.code(201).send(toProject(project!));
   });
@@ -64,16 +65,18 @@ export function projectRoutes(
     const result = await repos.projects.update(request.userId, id, patch);
     if (result.kind === "not_found") throw notFound();
     if (result.kind === "slug_taken") throw slugTaken();
+    await checker?.refreshStatusPages([id]);
     return toProject((await repos.projects.get(request.userId, id))!);
   });
 
   app.delete("/v1/projects/:projectId", async (request, reply) => {
-    const monitors = await repos.projects.delete(
-      request.userId,
-      idParam(request.params, "projectId"),
-    );
+    const id = idParam(request.params, "projectId");
+    const monitors = await repos.projects.delete(request.userId, id);
     if (!monitors) throw notFound();
-    if (checker) await Promise.all(monitors.map((m) => checker.remove(m.id, m.shard)));
+    if (checker) {
+      await Promise.all(monitors.map((m) => checker.remove(m.id, m.shard)));
+      await checker.refreshStatusPages([id]);
+    }
     return reply.code(204).send();
   });
 }

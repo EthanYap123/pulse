@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Header, WakingBanner } from "@/components/AppShell";
-import { AuthProvider } from "@/components/AuthProvider";
 import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -12,6 +10,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
+/**
+ * Only what every page shares. Sign-in lives in (app)/layout.tsx so public status pages
+ * never call the API, which would wake it (and Postgres) for every visitor.
+ */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     // The boot script sets data-theme before paint; React would otherwise warn about it.
@@ -19,13 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body>
-        <AuthProvider>
-          <Header />
-          <WakingBanner />
-          {children}
-        </AuthProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,5 +1,12 @@
-import type { AlertMessage, CheckError, CheckerMonitor } from "@pulse/shared";
+import {
+  STATUS_PAGE_DAYS,
+  STATUS_PAGE_INCIDENT_DAYS,
+  type AlertMessage,
+  type CheckError,
+  type CheckerMonitor,
+} from "@pulse/shared";
 import type { CheckResult } from "./run-checks.js";
+import type { StatusData } from "./status.js";
 
 /** A state change that must reach Postgres straight away (docs/ARCHITECTURE.md §3.4). */
 export type IncidentEvent =
@@ -49,6 +56,9 @@ export interface CheckerDb {
   writeIncidentEvent(event: IncidentEvent): Promise<AlertJob[]>;
   updateDeliveries(rows: DeliveryUpdate[]): Promise<void>;
   disableChannels(rows: { channelId: string; reason: string }[]): Promise<void>;
+  /** Status page data for public projects: all of them, or just `projectIds`. */
+  loadStatusData(projectIds: string[] | null): Promise<StatusData>;
+  projectIdsForMonitors(monitorIds: string[]): Promise<string[]>;
   close(): Promise<void>;
 }
 
@@ -155,6 +165,40 @@ SET state = 'disabled', disabled_reason = u.reason
 FROM unnest($1::uuid[], $2::text[]) AS u(id, reason)
 WHERE alert_channels.id = u.id`;
 
+const PUBLIC_MONITORS = `
+JOIN monitors m ON m.id = source.monitor_id AND m.show_on_status_page
+JOIN projects p ON p.id = m.project_id AND p.is_public
+  AND ($1::uuid[] IS NULL OR p.id = ANY($1::uuid[]))`;
+
+const STATUS_MONITORS = `
+SELECT p.id AS project_id, p.name AS project_name, p.slug, p.status_note,
+       m.id AS monitor_id, m.name AS monitor_name, m.shard,
+       coalesce(m.is_paused, false) AS is_paused, m.last_status::text AS last_status
+FROM projects p
+LEFT JOIN monitors m ON m.project_id = p.id AND m.show_on_status_page
+WHERE p.is_public AND ($1::uuid[] IS NULL OR p.id = ANY($1::uuid[]))
+ORDER BY p.id, m.created_at`;
+
+// Part 4 of Phase 3 moves this to the daily rollup table.
+const STATUS_DAYS = `
+SELECT source.monitor_id, to_char(source.checked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+       count(*)::int AS checks, (count(*) FILTER (WHERE NOT source.ok))::int AS failures
+FROM check_results source
+${PUBLIC_MONITORS}
+WHERE source.checked_at >= now() - make_interval(days => $2::int)
+GROUP BY 1, 2`;
+
+const STATUS_INCIDENTS = `
+SELECT m.project_id, m.name AS monitor_name, source.started_at, source.resolved_at, source.note
+FROM incidents source
+${PUBLIC_MONITORS}
+WHERE source.resolved_at IS NULL
+   OR source.started_at >= now() - make_interval(days => $2::int)
+ORDER BY source.started_at DESC`;
+
+const PROJECTS_FOR_MONITORS = `
+SELECT DISTINCT project_id FROM monitors WHERE id = ANY($1::uuid[])`;
+
 function iso(value: unknown): string | undefined {
   if (value instanceof Date) return value.toISOString();
   return typeof value === "string" ? value : undefined;
@@ -247,6 +291,45 @@ export function createCheckerDb(query: Query, close: () => Promise<void>): Check
     async disableChannels(rows) {
       if (rows.length === 0) return;
       await query(DISABLE_CHANNELS, [rows.map((r) => r.channelId), rows.map((r) => r.reason)]);
+    },
+
+    async loadStatusData(projectIds) {
+      const [monitors, days, incidents] = await Promise.all([
+        query(STATUS_MONITORS, [projectIds]),
+        query(STATUS_DAYS, [projectIds, STATUS_PAGE_DAYS]),
+        query(STATUS_INCIDENTS, [projectIds, STATUS_PAGE_INCIDENT_DAYS]),
+      ]);
+      return {
+        monitors: monitors.map((r) => ({
+          projectId: String(r.project_id),
+          projectName: String(r.project_name),
+          slug: String(r.slug),
+          note: typeof r.status_note === "string" ? r.status_note : null,
+          monitorId: typeof r.monitor_id === "string" ? r.monitor_id : null,
+          monitorName: typeof r.monitor_name === "string" ? r.monitor_name : null,
+          shard: r.shard === null ? null : Number(r.shard),
+          isPaused: Boolean(r.is_paused),
+          lastStatus: typeof r.last_status === "string" ? r.last_status : null,
+        })),
+        days: days.map((r) => ({
+          monitorId: String(r.monitor_id),
+          day: String(r.day),
+          checks: Number(r.checks),
+          failures: Number(r.failures),
+        })),
+        incidents: incidents.map((r) => ({
+          projectId: String(r.project_id),
+          monitorName: String(r.monitor_name),
+          startedAt: iso(r.started_at) ?? "",
+          resolvedAt: iso(r.resolved_at) ?? null,
+          note: typeof r.note === "string" ? r.note : null,
+        })),
+      };
+    },
+
+    async projectIdsForMonitors(monitorIds) {
+      const rows = await query(PROJECTS_FOR_MONITORS, [monitorIds]);
+      return rows.map((r) => String(r.project_id));
     },
 
     close,

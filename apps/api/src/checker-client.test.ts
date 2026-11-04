@@ -60,6 +60,14 @@ describe("checker client", () => {
     expect(live?.get(MONITOR.id)).toEqual(item);
   });
 
+  it("asks for status pages to be refreshed", async () => {
+    const { fetch, calls } = recordingFetch(() => new Response(null, { status: 204 }));
+    const client = createCheckerClient({ url: "https://checker.test", secret: SECRET, fetch });
+    expect(await client.refreshStatusPages(["p1"])).toBe(true);
+    expect(calls[0]?.url).toBe("https://checker.test/internal/v1/snapshots/refresh");
+    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({ projectIds: ["p1"] });
+  });
+
   it("skips the request when there is nothing to ask about", async () => {
     const { fetch, calls } = recordingFetch(() => Response.json({ items: [] }));
     const client = createCheckerClient({ url: "https://checker.test", secret: SECRET, fetch });

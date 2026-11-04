@@ -16,9 +16,18 @@ enabled = true
 name = "SHARD"
 class_name = "Shard"
 
+# One object holding every public project's status page snapshot.
+[[durable_objects.bindings]]
+name = "SNAPSHOTS"
+class_name = "Snapshots"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Shard"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Snapshots"]
 
 # Staging/production environments arrive in Phase 4. Secrets (DATABASE_URL,
 # CHECKER_HMAC_SECRET, ENCRYPTION_KEY) are set with `wrangler secret put`; locally they

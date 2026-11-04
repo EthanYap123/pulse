@@ -2,18 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 import type { CheckerMonitor, LiveStatus } from "@pulse/shared";
 import { createDecrypt } from "./crypto.js";
 import { connectDb } from "./db.js";
+import { doSql } from "./do-sql.js";
 import type { Env } from "./env.js";
-import { ShardCore, type Sql, type TickResult } from "./shard-core.js";
-
-function doSql(storage: DurableObjectStorage): Sql {
-  return {
-    all: <T>(query: string, ...params: (string | number | null)[]) =>
-      storage.sql.exec(query, ...params).toArray() as T[],
-    run: (query, ...params) => {
-      storage.sql.exec(query, ...params);
-    },
-  };
-}
+import { ShardCore, type TickResult } from "./shard-core.js";
 
 const log = (entry: Record<string, unknown>) => console.log(JSON.stringify(entry));
 
@@ -37,6 +28,8 @@ export class Shard extends DurableObject<Env> {
         openDb: () => connectDb(this.env.DB_DRIVER, this.env.DATABASE_URL),
         decrypt,
         log,
+        refreshStatusPages: (ids) =>
+          this.env.SNAPSHOTS.get(this.env.SNAPSHOTS.idFromName("all")).refreshMonitors(ids),
       });
     })();
     return this.core;

@@ -1,7 +1,9 @@
 import type { Shard } from "./shard.js";
+import type { Snapshots } from "./snapshots.js";
 
 export type Env = {
   SHARD: DurableObjectNamespace<Shard>;
+  SNAPSHOTS: DurableObjectNamespace<Snapshots>;
   ENVIRONMENT?: string;
   /** "pg" for local Postgres; anything else uses Neon's HTTP driver. */
   DB_DRIVER?: string;

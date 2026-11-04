@@ -1,9 +1,39 @@
 import { signRequest, type CheckerMonitor } from "@pulse/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createRouter, type ShardClient } from "../src/routes.js";
+import type { StatusSnapshot } from "../src/status.js";
 import { monitor } from "./helpers.js";
 
 const SECRET = "router-test-secret";
+const M1 = "00000000-0000-4000-8000-000000000001";
+const M2 = "00000000-0000-4000-8000-000000000002";
+
+const SNAPSHOT: StatusSnapshot = {
+  projectId: "00000000-0000-4000-8000-000000000099",
+  builtAt: "2026-11-04T12:00:00.000Z",
+  project: { name: "Site", slug: "site", note: null },
+  monitors: [
+    {
+      id: M1,
+      name: "API",
+      status: "pending",
+      uptime90dPct: null,
+      days: [],
+      shard: 1,
+      isPaused: false,
+    },
+    {
+      id: M2,
+      name: "Web",
+      status: "paused",
+      uptime90dPct: null,
+      days: [],
+      shard: 4,
+      isPaused: true,
+    },
+  ],
+  incidents: [],
+};
 
 /** `null` means no secret is configured. */
 function setup(secret: string | null = SECRET) {
@@ -22,13 +52,19 @@ function setup(secret: string | null = SECRET) {
     ),
     flush: vi.fn(() => Promise.resolve({ flushed: 3 })),
   })) satisfies ShardClient[];
+  const snapshots = {
+    get: vi.fn((slug: string) => Promise.resolve(slug === "site" ? SNAPSHOT : null)),
+    rebuildAll: vi.fn(() => Promise.resolve()),
+    refreshProjects: vi.fn((_ids: string[]) => Promise.resolve()),
+  };
   const handle = createRouter({
     shardCount: 5,
     shard: (i) => shards[i]!,
+    snapshots,
     hmacSecret: secret ?? undefined,
     environment: "test",
   });
-  return { handle, shards };
+  return { handle, shards, snapshots };
 }
 
 async function signed(method: string, path: string, body?: unknown, secret = SECRET) {
@@ -111,5 +147,68 @@ describe("checker routes", () => {
     const { handle } = setup();
     const res = await handle(await signed("POST", "/internal/v1/flush"));
     expect(await res.json()).toEqual({ flushed: 15 });
+  });
+});
+
+describe("public status endpoint", () => {
+  const get = (slug: string) => new Request(`https://checker.test/public/v1/status/${slug}`);
+
+  it("merges live status into the snapshot, needing no signature, and can be cached", async () => {
+    const { handle, shards } = setup(null); // works even with the internal API off
+    const res = await handle(get("site"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    const page = (await res.json()) as { overall: string; monitors: { status: string }[] };
+    expect(page.monitors.map((m) => m.status)).toEqual(["up", "paused"]);
+    expect(page.overall).toBe("operational");
+    // Paused monitors aren't asked about.
+    expect(shards[1]!.live).toHaveBeenCalledWith([M1]);
+    expect(shards[4]!.live).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for an unknown or private project", async () => {
+    const { handle } = setup();
+    expect((await handle(get("nobody"))).status).toBe(404);
+  });
+
+  it("still answers when a shard fails", async () => {
+    const { handle, shards } = setup();
+    shards[1]!.live.mockRejectedValueOnce(new Error("shard down"));
+    const res = await handle(get("site"));
+    const page = (await res.json()) as { monitors: { status: string }[] };
+    expect(res.status).toBe(200);
+    expect(page.monitors[0]?.status).toBe("pending");
+  });
+
+  it("rejects slugs that can't exist without asking the store", async () => {
+    const { handle, snapshots } = setup();
+    expect((await handle(get("Bad_Slug"))).status).toBe(404);
+    expect(snapshots.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("snapshot maintenance", () => {
+  it("refreshes projects on a signed request", async () => {
+    const { handle, snapshots } = setup();
+    const projectIds = [M1];
+    const res = await handle(
+      await signed("POST", "/internal/v1/snapshots/refresh", { projectIds }),
+    );
+    expect(res.status).toBe(204);
+    expect(snapshots.refreshProjects).toHaveBeenCalledWith(projectIds);
+  });
+
+  it("requires a signature and valid ids", async () => {
+    const { handle } = setup();
+    const path = "/internal/v1/snapshots/refresh";
+    const unsigned = new Request(`https://checker.test${path}`, { method: "POST" });
+    expect((await handle(unsigned)).status).toBe(401);
+    expect((await handle(await signed("POST", path, { projectIds: ["nope"] }))).status).toBe(422);
+  });
+
+  it("rebuilds every snapshot after a flush", async () => {
+    const { handle, snapshots } = setup();
+    await handle(await signed("POST", "/internal/v1/flush"));
+    expect(snapshots.rebuildAll).toHaveBeenCalled();
   });
 });

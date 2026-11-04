@@ -5,6 +5,8 @@ export interface CheckerClient {
   /** Pushes a monitor's config to its shard. Returns false if the checker couldn't be reached. */
   sync(monitor: CheckerMonitor): Promise<boolean>;
   remove(monitorId: string, shard: number): Promise<boolean>;
+  /** Rebuilds these projects' status pages. Otherwise they catch up at the hourly rebuild. */
+  refreshStatusPages(projectIds: string[]): Promise<boolean>;
   /** Live status per monitor, or null if the checker couldn't be reached. */
   live(monitors: { id: string; shard: number }[]): Promise<Map<string, LiveStatus> | null>;
 }
@@ -54,6 +56,10 @@ export function createCheckerClient(options: CheckerClientOptions): CheckerClien
 
     async remove(monitorId, shard) {
       return (await call("DELETE", `/internal/v1/monitors/${monitorId}?shard=${shard}`)) !== null;
+    },
+
+    async refreshStatusPages(projectIds) {
+      return (await call("POST", "/internal/v1/snapshots/refresh", { projectIds })) !== null;
     },
 
     async live(monitors) {

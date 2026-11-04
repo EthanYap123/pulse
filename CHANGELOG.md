@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Public status pages at `/status/<slug>`: overall status, 90-day uptime bars and recent incidents, served from checker snapshots so they keep working when the API and Postgres are down. Owners can make a page private or hide individual monitors.
 - Discord alerts: alert channels per project, outage and recovery messages sent by the checker with retries, cooldown for flapping monitors, and channels turned off when Discord rejects the webhook.
 - Incidents: opened and resolved by the checker in real time, one open per monitor, resolved on pause, listed in the API and dashboard with notes.
 - Coverage thresholds enforced in CI: shared 80%, web lib 80%, API 90%, checker 85%, with reports as artifacts.

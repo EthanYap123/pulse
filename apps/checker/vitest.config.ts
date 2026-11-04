@@ -11,7 +11,14 @@ export default defineConfig({
       reporter: ["text-summary", "html", "lcov"],
       include: ["src/**/*.ts"],
       // Cloudflare-only glue (imports cloudflare:workers), checked with `wrangler dev`.
-      exclude: ["src/shard.ts", "src/index.ts", "src/env.ts", "src/types/**"],
+      exclude: [
+        "src/shard.ts",
+        "src/snapshots.ts",
+        "src/do-sql.ts",
+        "src/index.ts",
+        "src/env.ts",
+        "src/types/**",
+      ],
       thresholds: { lines: 85, functions: 85, statements: 85, branches: 85 },
     },
     projects: [

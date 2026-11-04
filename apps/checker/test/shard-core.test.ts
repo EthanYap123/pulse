@@ -302,3 +302,25 @@ describe("ShardCore incidents", () => {
     expect(core.pendingEvents()).toEqual([]);
   });
 });
+
+describe("ShardCore status pages", () => {
+  it("asks for a refresh when an incident is written, and not otherwise", async () => {
+    const db = fakeDb();
+    const { core, seed, deps } = setup({ db, status: 503 });
+    const refresh = vi.fn((_ids: string[]) => Promise.resolve());
+    deps.refreshStatusPages = refresh;
+    seed(monitor({ failureThreshold: 2 }));
+    await core.tick(TICK);
+    expect(refresh).not.toHaveBeenCalled();
+    await core.tick(TICK + 5 * 60_000);
+    expect(refresh).toHaveBeenCalledWith([monitor().id]);
+  });
+
+  it("carries on if the refresh fails", async () => {
+    const db = fakeDb();
+    const { core, seed, deps } = setup({ db, status: 503 });
+    deps.refreshStatusPages = () => Promise.reject(new Error("snapshots down"));
+    seed(monitor({ failureThreshold: 1 }));
+    await expect(core.tick(TICK)).resolves.toMatchObject({ incidentEventsWritten: 1 });
+  });
+});
