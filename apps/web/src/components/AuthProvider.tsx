@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createApi, type Api } from "@/lib/api";
+import { hasSessionHint, setSessionHint } from "@/lib/session-hint";
 import type { User } from "@/lib/types";
 
 type AuthState =
@@ -35,7 +36,12 @@ function createSession(
     token = next;
     if (!next) setState({ status: "signed_out", user: null });
   };
-  const api = createApi({ getToken: () => token, setToken, onSlow: setWaking });
+  const api = createApi({
+    getToken: () => token,
+    setToken,
+    onSlow: setWaking,
+    onSessionEnded: () => setSessionHint(false),
+  });
   return { api, setToken };
 }
 
@@ -48,11 +54,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .refresh()
-      .then((token) => (token ? api.get<User>("/me") : null))
+    // A browser that has never signed in has nothing to refresh, so the API isn't woken.
+    const token = hasSessionHint() ? api.refresh() : Promise.resolve(null);
+    token
+      .then((t) => (t ? api.get<User>("/me") : null))
       .then((user) => {
-        if (!cancelled && user) setState({ status: "signed_in", user });
+        if (cancelled) return;
+        setState(user ? { status: "signed_in", user } : { status: "signed_out", user: null });
       })
       .catch(() => {
         if (!cancelled) setState({ status: "signed_out", user: null });
@@ -68,11 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       { email, password },
     );
     session.setToken(accessToken);
+    setSessionHint(true);
     setState({ status: "signed_in", user });
   }
 
   async function signOut() {
     await api.post("/auth/logout").catch(() => undefined);
+    setSessionHint(false);
     session.setToken(null);
   }
 

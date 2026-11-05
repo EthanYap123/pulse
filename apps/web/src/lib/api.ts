@@ -19,6 +19,8 @@ export class ApiError extends Error {
 export type ApiOptions = {
   getToken: () => string | null;
   setToken: (token: string | null) => void;
+  /** The API said the session is over (not just unreachable). */
+  onSessionEnded?: () => void;
   /** Called with true when a request is still waiting after 3 s (the API may be waking up). */
   onSlow?: (slow: boolean) => void;
   fetch?: typeof fetch;
@@ -42,6 +44,7 @@ export function createApi(options: ApiOptions) {
           credentials: "same-origin",
         });
         const token = res.ok ? ((await res.json()) as { accessToken: string }).accessToken : null;
+        if (res.status === 401) options.onSessionEnded?.();
         options.setToken(token);
         return token;
       } catch {
