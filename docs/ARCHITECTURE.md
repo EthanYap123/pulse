@@ -167,14 +167,14 @@ Each shard, on the tick at minute 0, after its checks:
 2. Deletes the flushed buffer rows only after Neon confirms the insert.
 3. Pulls its monitor config from Neon (`WHERE shard = $1`) to reconcile anything a missed sync dropped.
 
-Then the cron Worker (one shard is elected by `hour mod 5`) runs the maintenance SQL in Neon:
+Once the shards have settled, the cron Worker asks the `Snapshots` Durable Object to run the hourly job. It has its own subrequest budget and needs about 9 queries however many monitors there are:
 
-1. Upsert `check_rollups_hourly` for the last 2 complete hours.
-2. Upsert `check_rollups_daily` for today and yesterday (UTC).
-3. Delete raw checks older than 7 days, hourly rollups older than 30 days, daily rollups and resolved incidents older than 400 days.
-4. Once the shards have flushed, the cron Worker asks the `Snapshots` Durable Object to rebuild one snapshot per public project (90 daily bars, 90-day uptime %, last 14 days of incidents). It has its own subrequest budget and needs 3 queries however many projects there are. If Postgres is unavailable, the old snapshots keep being served. Part 4 of Phase 3 moves the daily figures from raw checks to rollups.
+1. Upsert `check_rollups_hourly` for every complete hour whose raw count differs from its rollup. That covers new hours and hours that received late results after a failed flush, with no fixed window. The current hour waits until it is complete.
+2. Upsert `check_rollups_daily` from the hourly rollups, from yesterday (UTC) or from the oldest hour that changed, but never past 29 days, where hourly data is starting to be deleted.
+3. Delete raw checks older than 7 days, a whole hour at a time, only where that hour has a rollup, and at most 24 hours per run. Delete hourly rollups older than 30 days, and daily rollups and resolved incidents older than 400 days. This step is skipped if a rollup step failed.
+4. Rebuild one snapshot per public project (90 daily bars from the daily rollups, 90-day uptime %, last 14 days of incidents). This runs even if the steps above failed. If Postgres is unavailable, the old snapshots keep being served.
 
-All steps are idempotent upserts or range deletes, so a missed or repeated hour is harmless. Details: [ADR-0002](adr/0002-data-retention-and-rollups.md).
+Every step is an idempotent upsert or a delete of expired rows, so a missed or repeated hour is harmless. Details: [ADR-0002](adr/0002-data-retention-and-rollups.md).
 
 ### 3.6 Keeping config in sync
 

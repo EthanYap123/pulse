@@ -151,9 +151,11 @@ model Monitor {
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  checkResults CheckResult[]
-  incidents    Incident[]
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checkResults  CheckResult[]
+  hourlyRollups CheckRollupHourly[]
+  dailyRollups  CheckRollupDaily[]
+  incidents     Incident[]
 
   @@index([projectId])
   @@index([shard])
@@ -236,4 +238,37 @@ model AlertDelivery {
   @@unique([incidentId, channelId, event])
   @@index([channelId, event, sentAt(sort: Desc)])
   @@map("alert_deliveries")
+}
+
+/// One row per monitor per hour, built from check_results. Kept 30 days (ADR-0002).
+model CheckRollupHourly {
+  monitorId    String   @map("monitor_id") @db.Uuid
+  hour         DateTime @db.Timestamptz(3)
+  checks       Int
+  failures     Int
+  /// Latency figures cover successful checks only; null if every check failed.
+  latencyAvgMs Int?     @map("latency_avg_ms")
+  latencyP95Ms Int?     @map("latency_p95_ms")
+  latencyMaxMs Int?     @map("latency_max_ms")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@id([monitorId, hour])
+  @@map("check_rollups_hourly")
+}
+
+/// One row per monitor per UTC day, built from the hourly rollups. Kept 400 days (ADR-0002).
+model CheckRollupDaily {
+  monitorId    String   @map("monitor_id") @db.Uuid
+  day          DateTime @db.Date
+  checks       Int
+  failures     Int
+  latencyAvgMs Int?     @map("latency_avg_ms")
+  /// The highest hourly p95 of the day: an upper bound, not a true daily p95.
+  latencyP95Ms Int?     @map("latency_p95_ms")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@id([monitorId, day])
+  @@map("check_rollups_daily")
 }

@@ -207,21 +207,51 @@ describe("GET /v1/monitors/:id/checks", () => {
       [false, 40],
       [true, 300],
     ]);
-    expect(body.uptimePct).toBe(66.67);
+    expect(body.uptimePct).toBe(66.66); // rounded down, as on status pages
   });
 
-  it("returns hourly buckets for 7 days, averaging only successful checks", async () => {
+  async function seedHourly(id: string) {
+    const hoursAgo = (h: number) => new Date(Math.floor(Date.now() / 3_600_000 - h) * 3_600_000);
+    const row = (hour: Date, checks: number, failures: number, avg: number | null) => ({
+      monitorId: id,
+      hour,
+      checks,
+      failures,
+      latencyAvgMs: avg,
+      latencyP95Ms: avg,
+      latencyMaxMs: avg,
+    });
+    await prisma.checkRollupHourly.createMany({
+      data: [
+        row(hoursAgo(20 * 24), 12, 12, null), // inside 30d, outside 7d
+        row(hoursAgo(48), 12, 3, 200),
+        row(hoursAgo(1), 12, 0, 100),
+      ],
+    });
+  }
+
+  it("returns hourly rollups for 7 days, oldest first", async () => {
     const { id } = await createMonitor();
-    await seedChecks(id);
+    await seedHourly(id);
     const res = await alice.request({ method: "GET", url: `/v1/monitors/${id}/checks?range=7d` });
     const body = res.json<{
-      points: { checks: number; failures: number; avgMs: number }[];
+      points: { ok: boolean; checks: number; failures: number; avgMs: number; p95Ms: number }[];
       uptimePct: number;
     }>();
-    const total = body.points.reduce((n, p) => n + p.checks, 0);
-    expect(total).toBe(4);
-    expect(body.uptimePct).toBe(75);
-    for (const p of body.points) expect(p.avgMs).not.toBe(40); // the failed check is excluded
+    expect(body.points).toMatchObject([
+      { ok: false, checks: 12, failures: 3, avgMs: 200, p95Ms: 200 },
+      { ok: true, checks: 12, failures: 0, avgMs: 100, p95Ms: 100 },
+    ]);
+    expect(body.uptimePct).toBe(87.5);
+  });
+
+  it("reaches back the full 30 days, past where raw checks are kept", async () => {
+    const { id } = await createMonitor();
+    await seedHourly(id);
+    const res = await alice.request({ method: "GET", url: `/v1/monitors/${id}/checks?range=30d` });
+    const body = res.json<{ points: { avgMs: number | null }[]; uptimePct: number }>();
+    expect(body.points.map((p) => p.avgMs)).toEqual([null, 200, 100]);
+    expect(body.uptimePct).toBe(58.33);
   });
 
   it("returns empty history with null uptime for a new monitor", async () => {
@@ -240,6 +270,61 @@ describe("GET /v1/monitors/:id/checks", () => {
       (await alice.request({ method: "GET", url: `/v1/monitors/${id}/checks?range=1y` }))
         .statusCode,
     ).toBe(422);
+  });
+});
+
+describe("GET /v1/monitors/:id/uptime", () => {
+  const day = (ago: number) =>
+    new Date(`${new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`);
+
+  async function seedDays(id: string) {
+    await prisma.checkRollupDaily.createMany({
+      data: [
+        { monitorId: id, day: day(100), checks: 288, failures: 288 },
+        { monitorId: id, day: day(10), checks: 288, failures: 0 },
+        { monitorId: id, day: day(1), checks: 288, failures: 1 },
+      ],
+    });
+  }
+
+  it("returns daily uptime for the last 90 days by default", async () => {
+    const { id } = await createMonitor();
+    await seedDays(id);
+    const res = await alice.request({ method: "GET", url: `/v1/monitors/${id}/uptime` });
+    expect(res.json()).toEqual({
+      days: [
+        { day: day(10).toISOString().slice(0, 10), uptimePct: 100, checks: 288 },
+        { day: day(1).toISOString().slice(0, 10), uptimePct: 99.65, checks: 288 },
+      ],
+      uptimePct: 99.82,
+    });
+  });
+
+  it("honours a shorter window", async () => {
+    const { id } = await createMonitor();
+    await seedDays(id);
+    const res = await alice.request({ method: "GET", url: `/v1/monitors/${id}/uptime?days=7` });
+    expect(res.json<{ days: unknown[] }>().days).toHaveLength(1);
+  });
+
+  it("has null uptime with no data", async () => {
+    const { id } = await createMonitor();
+    const res = await alice.request({ method: "GET", url: `/v1/monitors/${id}/uptime` });
+    expect(res.json()).toEqual({ days: [], uptimePct: null });
+  });
+
+  it("is hidden from other users and rejects a bad window", async () => {
+    const { id } = await createMonitor();
+    const bob = await signUp(app, "bob@example.com");
+    const asBob = await bob.request({ method: "GET", url: `/v1/monitors/${id}/uptime` });
+    expect(asBob.statusCode).toBe(404);
+    for (const days of ["0", "91", "x"]) {
+      const res = await alice.request({
+        method: "GET",
+        url: `/v1/monitors/${id}/uptime?days=${days}`,
+      });
+      expect(res.statusCode).toBe(422);
+    }
   });
 });
 

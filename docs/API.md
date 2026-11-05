@@ -88,17 +88,17 @@ type Project = {
 
 ### Monitors
 
-| Method | Path                               | Body / query                        | Response                                                               |
-| ------ | ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
-| GET    | `/v1/projects/:projectId/monitors` |                                     | `200 { items: MonitorWithStatus[] }`                                   |
-| POST   | `/v1/projects/:projectId/monitors` | `MonitorInput`                      | `201 Monitor` · `409 limit_reached` · `422`                            |
-| GET    | `/v1/monitors/:monitorId`          |                                     | `200 MonitorWithStatus`                                                |
-| PATCH  | `/v1/monitors/:monitorId`          | `Partial<MonitorInput>`             | `200 Monitor`                                                          |
-| POST   | `/v1/monitors/:monitorId/pause`    |                                     | `200 Monitor`                                                          |
-| POST   | `/v1/monitors/:monitorId/resume`   |                                     | `200 Monitor`                                                          |
-| DELETE | `/v1/monitors/:monitorId`          |                                     | `204`                                                                  |
-| GET    | `/v1/monitors/:monitorId/checks`   | `?range=24h\|7d\|30d` (default 24h) | `200 { range, points: LatencyPoint[], uptimePct: number \| null }`     |
-| GET    | `/v1/monitors/:monitorId/uptime`   | `?days=1..90`                       | `200 { days: DailyUptime[], uptimePct }` (Phase 3, from daily rollups) |
+| Method | Path                               | Body / query                        | Response                                                           |
+| ------ | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/v1/projects/:projectId/monitors` |                                     | `200 { items: MonitorWithStatus[] }`                               |
+| POST   | `/v1/projects/:projectId/monitors` | `MonitorInput`                      | `201 Monitor` · `409 limit_reached` · `422`                        |
+| GET    | `/v1/monitors/:monitorId`          |                                     | `200 MonitorWithStatus`                                            |
+| PATCH  | `/v1/monitors/:monitorId`          | `Partial<MonitorInput>`             | `200 Monitor`                                                      |
+| POST   | `/v1/monitors/:monitorId/pause`    |                                     | `200 Monitor`                                                      |
+| POST   | `/v1/monitors/:monitorId/resume`   |                                     | `200 Monitor`                                                      |
+| DELETE | `/v1/monitors/:monitorId`          |                                     | `204`                                                              |
+| GET    | `/v1/monitors/:monitorId/checks`   | `?range=24h\|7d\|30d` (default 24h) | `200 { range, points: LatencyPoint[], uptimePct: number \| null }` |
+| GET    | `/v1/monitors/:monitorId/uptime`   | `?days=1..90` (default 90)          | `200 { days: DailyUptime[], uptimePct }` (from daily rollups)      |
 
 ```ts
 type MonitorInput = {
@@ -147,7 +147,9 @@ type DailyUptime = { day: string; uptimePct: number | null; checks: number };
 
 Config changes are pushed to the checker on every create, update, pause, resume and delete. If that push fails, the request still succeeds and the checker picks the change up at its next hourly reconcile from Postgres.
 
-`/checks`: 24h returns every check. 7d and 30d return hourly buckets with `avgMs`, `p95Ms`, `checks` and `failures` (latency averages only successful checks). Until the Phase 3 rollups exist, buckets are computed from raw checks, which are kept 7 days, so 30d shows at most 7 days. History in Postgres lags by up to an hour (the flush interval).
+`/checks`: 24h returns every check. 7d and 30d return hourly buckets with `avgMs`, `p95Ms`, `checks` and `failures` (latency averages only successful checks), read from the hourly rollups, so the hour in progress isn't included. History in Postgres lags by up to an hour (the flush interval).
+
+`/uptime`: one entry per UTC day that has data, oldest first, read from the daily rollups. Days with no checks are left out rather than sent as 100%. Percentages are rounded down, so a period with any failure never shows 100.
 
 ### Incidents
 

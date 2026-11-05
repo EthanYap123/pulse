@@ -21,7 +21,7 @@ export default {
       environment: env.ENVIRONMENT ?? "local",
       snapshots: {
         get: (slug) => snapshotsStub(env).get(slug),
-        rebuildAll: () => snapshotsStub(env).rebuildAll(),
+        runHourly: () => snapshotsStub(env).runHourly(),
         refreshProjects: (ids) => snapshotsStub(env).refreshProjects(ids),
       },
       shard: (i) => {
@@ -44,12 +44,12 @@ export default {
         shardStub(env, i).tick(i, controller.scheduledTime),
       ),
     );
-    // Hourly, once the shards have flushed: rebuild the status pages from Postgres.
+    // Hourly, once the shards have flushed: rollups, retention and fresh status pages.
     if (new Date(controller.scheduledTime).getUTCMinutes() === 0) {
       await snapshotsStub(env)
-        .rebuildAll()
+        .runHourly()
         .catch((error: unknown) => {
-          console.log(JSON.stringify({ msg: "snapshot rebuild failed", error: String(error) }));
+          console.log(JSON.stringify({ msg: "hourly maintenance failed", error: String(error) }));
         });
     }
     console.log(
