@@ -2,6 +2,7 @@ import {
   LIMITS,
   monitorInputSchema,
   monitorPatchSchema,
+  uptimePct,
   type CheckerMonitor,
   type LiveStatus,
 } from "@pulse/shared";
@@ -77,6 +78,7 @@ function capError(result: CapExceeded): AppError {
 }
 
 const historyQuerySchema = z.object({ range: z.enum(["24h", "7d", "30d"]).default("24h") });
+const uptimeQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(90) });
 
 /** Registered inside the authenticated scope in app.ts. */
 export function monitorRoutes(
@@ -142,7 +144,27 @@ export function monitorRoutes(
     return {
       range,
       points,
-      uptimePct: checks === 0 ? null : Math.round(((checks - failures) / checks) * 10_000) / 100,
+      uptimePct: uptimePct(checks, failures),
+    };
+  });
+
+  app.get("/v1/monitors/:monitorId/uptime", async (request) => {
+    const { days } = uptimeQuerySchema.parse(request.query);
+    const rows = await repos.monitors.dailyUptime(
+      request.userId,
+      idParam(request.params, "monitorId"),
+      days,
+    );
+    if (!rows) throw notFound();
+    const checks = rows.reduce((n, r) => n + r.checks, 0);
+    const failures = rows.reduce((n, r) => n + r.failures, 0);
+    return {
+      days: rows.map((r) => ({
+        day: r.day.toISOString().slice(0, 10),
+        uptimePct: uptimePct(r.checks, r.failures),
+        checks: r.checks,
+      })),
+      uptimePct: uptimePct(checks, failures),
     };
   });
 

@@ -28,14 +28,14 @@ Three tiers, each with a fixed retention:
 
 Resolved incidents and their alert deliveries are kept **400 days**.
 
-The job runs from the checker's hourly tick (minute 0), after the buffer flush:
+The job runs from the checker's hourly tick (minute 0), after the buffer flush, in the `Snapshots` Durable Object, which has its own subrequest budget:
 
-1. Upsert hourly rollups for the **last 2 complete hours** (so a late flush is caught next hour).
-2. Upsert daily rollups for **today and yesterday** (UTC), computed from hourly rollups.
-3. Delete expired rows by time range in batches of 10,000 (to keep each statement short).
-4. Rebuild status-page snapshots from the daily table.
+1. Upsert hourly rollups for **every complete hour whose raw count differs from its rollup**. A fixed window would miss results flushed later than it allows; comparing counts catches them however late, and a repeat run touches nothing.
+2. Upsert daily rollups from the hourly ones, from **yesterday (UTC) or the oldest hour that changed**, never past 29 days. Recomputing a day whose hourly rows have started to expire would overwrite a correct figure with a smaller one.
+3. Delete expired rows, only if the rollups succeeded. Raw checks go **a whole hour at a time and only where that hour has a rollup**, because deleting part of an hour would make its count differ and step 1 would rebuild the rollup from the remainder. At most 24 hours go per run, which keeps catching up after an outage cheap, and at the normal rate each run deletes one hour.
+4. Rebuild status-page snapshots from the daily table, even if the steps above failed.
 
-Every step is an `INSERT ... ON CONFLICT DO UPDATE` or a range `DELETE`, so running it twice, or skipping an hour, gives the same result. p95 is computed with `percentile_cont(0.95)` over raw rows for hourly rollups; the daily p95 is the max of the hourly p95s (an upper bound, documented in the UI tooltip) to avoid keeping raw rows longer.
+Running it twice, or skipping an hour, gives the same result. p95 is computed with `percentile_cont(0.95)` over raw rows for hourly rollups; the daily p95 is the max of the hourly p95s (an upper bound) to avoid keeping raw rows longer. Latency figures only count successful checks, so an hour where every check failed has no latency.
 
 ## Consequences
 
@@ -49,8 +49,9 @@ Every step is an `INSERT ... ON CONFLICT DO UPDATE` or a range `DELETE`, so runn
 
 - No drill-down into individual checks older than 7 days.
 - Daily p95 is approximate.
-- If the hourly job doesn't run for more than 7 days (e.g. Neon out of compute for a week), raw rows needed for some hourly rollups could be deleted before they're rolled up. Mitigation: the retention delete only removes raw rows for hours that already have an hourly rollup.
+- If the hourly job doesn't run for more than 7 days (e.g. Neon out of compute for a week), raw rows wait past their retention. They are rolled up before any are deleted, so nothing is lost, but the first runs afterwards have more to do.
 - Rollups depend on the checker's tick; a Cloudflare outage delays them.
+- Charts and bars built from rollups don't include the hour in progress.
 
 ## Alternatives considered
 

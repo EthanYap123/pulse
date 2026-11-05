@@ -1,3 +1,4 @@
+import { STATUS_PAGE_DAYS } from "@pulse/shared";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { connectPg, type CheckerDb } from "../src/db.js";
@@ -340,41 +341,19 @@ describe("status page data against Postgres", () => {
     expect(data.monitors).toMatchObject([{ slug: "checker-test", monitorId: null, shard: null }]);
   });
 
-  it("groups checks by UTC day and leaves out hidden monitors", async () => {
-    const recent = new Date(Date.UTC(2026, 10, 1, 23, 59)).toISOString();
-    const nextDay = new Date(Date.UTC(2026, 10, 2, 0, 1)).toISOString();
+  it("reads days from the daily rollups and leaves out hidden monitors", async () => {
+    const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
     await admin.query(`UPDATE monitors SET show_on_status_page = false WHERE id = $1`, [MONITOR_B]);
-    await db.insertResults([
-      {
-        monitorId: MONITOR_A,
-        checkedAt: recent,
-        ok: true,
-        statusCode: 200,
-        latencyMs: 1,
-        error: null,
-      },
-      {
-        monitorId: MONITOR_A,
-        checkedAt: nextDay,
-        ok: false,
-        statusCode: 500,
-        latencyMs: 1,
-        error: "status",
-      },
-      {
-        monitorId: MONITOR_B,
-        checkedAt: nextDay,
-        ok: true,
-        statusCode: 200,
-        latencyMs: 1,
-        error: null,
-      },
-    ]);
+    await admin.query(
+      `INSERT INTO check_rollups_daily (monitor_id, day, checks, failures) VALUES
+       ($1, $3, 1, 0), ($1, $4, 1, 1), ($2, $4, 1, 0), ($1, $5, 9, 9)`,
+      [MONITOR_A, MONITOR_B, day(2), day(1), day(STATUS_PAGE_DAYS + 5)],
+    );
     const { days } = await db.loadStatusData(null);
     const sorted = [...days].sort((a, b) => a.day.localeCompare(b.day));
     expect(sorted).toEqual([
-      { monitorId: MONITOR_A, day: "2026-11-01", checks: 1, failures: 0 },
-      { monitorId: MONITOR_A, day: "2026-11-02", checks: 1, failures: 1 },
+      { monitorId: MONITOR_A, day: day(2), checks: 1, failures: 0 },
+      { monitorId: MONITOR_A, day: day(1), checks: 1, failures: 1 },
     ]);
   });
 

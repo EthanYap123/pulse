@@ -58,6 +58,9 @@ export function fakeDb(monitors: CheckerMonitor[] = []) {
       },
       loadStatusData: () => Promise.resolve({ monitors: [], days: [], incidents: [] }),
       projectIdsForMonitors: () => Promise.resolve([]),
+      rollUpHours: () => Promise.resolve({ hours: 0, oldest: null }),
+      rollUpDays: () => Promise.resolve(),
+      applyRetention: () => Promise.resolve({ raw: 0, hourly: 0, daily: 0, incidents: 0 }),
       disableChannels: (rows) => {
         state.disabledChannels.push(...rows);
         return Promise.resolve();

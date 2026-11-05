@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { connectDb } from "./db.js";
 import type { Env } from "./env.js";
 import { doSql } from "./do-sql.js";
+import { runHourly, type HourlySummary } from "./maintenance.js";
 import { SnapshotStore, buildSnapshots, type StatusSnapshot } from "./status.js";
 
 /**
@@ -15,12 +16,16 @@ export class Snapshots extends DurableObject<Env> {
     return this.store.get(slug);
   }
 
-  /** Rebuilds all snapshots. If Postgres is unavailable the old ones keep being served. */
-  async rebuildAll(): Promise<void> {
+  /**
+   * The hourly job: rollups, retention, then fresh snapshots. If Postgres is unavailable this
+   * throws and the old snapshots keep being served.
+   */
+  async runHourly(): Promise<HourlySummary> {
     const db = await connectDb(this.env.DB_DRIVER, this.env.DATABASE_URL);
     try {
-      const data = await db.loadStatusData(null);
-      this.store.replaceAll(buildSnapshots(data, Date.now()));
+      return await runHourly(db, this.store, Date.now(), (entry) => {
+        console.log(JSON.stringify(entry));
+      });
     } finally {
       await db.close();
     }

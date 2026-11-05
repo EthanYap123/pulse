@@ -54,7 +54,7 @@ function setup(secret: string | null = SECRET) {
   })) satisfies ShardClient[];
   const snapshots = {
     get: vi.fn((slug: string) => Promise.resolve(slug === "site" ? SNAPSHOT : null)),
-    rebuildAll: vi.fn(() => Promise.resolve()),
+    runHourly: vi.fn(() => Promise.resolve()),
     refreshProjects: vi.fn((_ids: string[]) => Promise.resolve()),
   };
   const handle = createRouter({
@@ -206,9 +206,9 @@ describe("snapshot maintenance", () => {
     expect((await handle(await signed("POST", path, { projectIds: ["nope"] }))).status).toBe(422);
   });
 
-  it("rebuilds every snapshot after a flush", async () => {
+  it("runs the hourly job after a flush", async () => {
     const { handle, snapshots } = setup();
     await handle(await signed("POST", "/internal/v1/flush"));
-    expect(snapshots.rebuildAll).toHaveBeenCalled();
+    expect(snapshots.runHourly).toHaveBeenCalled();
   });
 });

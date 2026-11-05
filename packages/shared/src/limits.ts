@@ -1,3 +1,6 @@
+/** How long each kind of history is kept, in days (ADR-0002). */
+export const RETENTION_DAYS = { raw: 7, hourly: 30, daily: 400, incidents: 400 } as const;
+
 /** Free-tier caps (docs/COSTS.md, "Caps that follow from these limits"). */
 export const LIMITS = {
   projectsPerUser: 3,

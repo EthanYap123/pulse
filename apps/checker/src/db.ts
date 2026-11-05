@@ -1,4 +1,5 @@
 import {
+  RETENTION_DAYS,
   STATUS_PAGE_DAYS,
   STATUS_PAGE_INCIDENT_DAYS,
   type AlertMessage,
@@ -59,6 +60,12 @@ export interface CheckerDb {
   /** Status page data for public projects: all of them, or just `projectIds`. */
   loadStatusData(projectIds: string[] | null): Promise<StatusData>;
   projectIdsForMonitors(monitorIds: string[]): Promise<string[]>;
+  /** Builds hourly rollups for complete hours whose raw checks changed. */
+  rollUpHours(): Promise<{ hours: number; oldest: string | null }>;
+  /** Recomputes daily rollups from the hourly ones, from this UTC day onwards. */
+  rollUpDays(fromIso: string): Promise<void>;
+  /** Deletes history past its retention. Raw checks only go once they are rolled up. */
+  applyRetention(): Promise<{ raw: number; hourly: number; daily: number; incidents: number }>;
   close(): Promise<void>;
 }
 
@@ -179,14 +186,11 @@ LEFT JOIN monitors m ON m.project_id = p.id AND m.show_on_status_page
 WHERE p.is_public AND ($1::uuid[] IS NULL OR p.id = ANY($1::uuid[]))
 ORDER BY p.id, m.created_at`;
 
-// Part 4 of Phase 3 moves this to the daily rollup table.
 const STATUS_DAYS = `
-SELECT source.monitor_id, to_char(source.checked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
-       count(*)::int AS checks, (count(*) FILTER (WHERE NOT source.ok))::int AS failures
-FROM check_results source
+SELECT source.monitor_id, source.day::text AS day, source.checks, source.failures
+FROM check_rollups_daily source
 ${PUBLIC_MONITORS}
-WHERE source.checked_at >= now() - make_interval(days => $2::int)
-GROUP BY 1, 2`;
+WHERE source.day >= (now() AT TIME ZONE 'UTC')::date - $2::int`;
 
 const STATUS_INCIDENTS = `
 SELECT m.project_id, m.name AS monitor_name, source.started_at, source.resolved_at, source.note
@@ -198,6 +202,102 @@ ORDER BY source.started_at DESC`;
 
 const PROJECTS_FOR_MONITORS = `
 SELECT DISTINCT project_id FROM monitors WHERE id = ANY($1::uuid[])`;
+
+// Finds complete hours whose raw count differs from their rollup (new, or late results arrived
+// after a failed flush) and rebuilds just those, so a repeat run changes nothing.
+const ROLL_UP_HOURS = `
+WITH counts AS (
+  SELECT monitor_id, date_trunc('hour', checked_at, 'UTC') AS hour, count(*)::int AS checks
+  FROM check_results
+  WHERE checked_at < date_trunc('hour', now(), 'UTC')
+  GROUP BY 1, 2
+),
+stale AS (
+  SELECT c.monitor_id, c.hour
+  FROM counts c
+  LEFT JOIN check_rollups_hourly h ON h.monitor_id = c.monitor_id AND h.hour = c.hour
+  WHERE h.checks IS DISTINCT FROM c.checks
+),
+upserted AS (
+  INSERT INTO check_rollups_hourly
+    (monitor_id, hour, checks, failures, latency_avg_ms, latency_p95_ms, latency_max_ms)
+  SELECT s.monitor_id, s.hour, count(*)::int, (count(*) FILTER (WHERE NOT r.ok))::int,
+         round(avg(r.latency_ms) FILTER (WHERE r.ok))::int,
+         round(percentile_cont(0.95) WITHIN GROUP (ORDER BY r.latency_ms) FILTER (WHERE r.ok))::int,
+         max(r.latency_ms) FILTER (WHERE r.ok)
+  FROM stale s
+  JOIN check_results r
+    ON r.monitor_id = s.monitor_id
+   AND r.checked_at >= s.hour AND r.checked_at < s.hour + interval '1 hour'
+  GROUP BY s.monitor_id, s.hour
+  ON CONFLICT (monitor_id, hour) DO UPDATE
+  SET checks = excluded.checks, failures = excluded.failures,
+      latency_avg_ms = excluded.latency_avg_ms, latency_p95_ms = excluded.latency_p95_ms,
+      latency_max_ms = excluded.latency_max_ms
+  RETURNING hour
+)
+SELECT count(*)::int AS hours, min(hour) AS oldest FROM upserted`;
+
+// Average latency is weighted by successful checks. The daily p95 is the worst hourly p95: an
+// upper bound, since raw checks aren't kept long enough to compute a true one (ADR-0002).
+const ROLL_UP_DAYS = `
+INSERT INTO check_rollups_daily (monitor_id, day, checks, failures, latency_avg_ms, latency_p95_ms)
+SELECT monitor_id, (hour AT TIME ZONE 'UTC')::date, sum(checks)::int, sum(failures)::int,
+       round(sum(latency_avg_ms * (checks - failures))::numeric
+             / nullif(sum(checks - failures) FILTER (WHERE latency_avg_ms IS NOT NULL), 0))::int,
+       max(latency_p95_ms)
+FROM check_rollups_hourly
+WHERE hour >= $1::timestamptz
+GROUP BY 1, 2
+ON CONFLICT (monitor_id, day) DO UPDATE
+SET checks = excluded.checks, failures = excluded.failures,
+    latency_avg_ms = excluded.latency_avg_ms, latency_p95_ms = excluded.latency_p95_ms`;
+
+// Raw checks go a whole hour at a time, and only if that hour has a rollup, so a rollup is never
+// rebuilt from part of an hour. At most 24 hours per run keeps catching up after an outage cheap.
+const DELETE_RAW = `
+WITH cutoff AS (
+  SELECT least(
+    date_trunc('hour', now() - make_interval(days => $1::int), 'UTC'),
+    date_trunc('hour', (SELECT min(checked_at) FROM check_results), 'UTC') + interval '24 hours'
+  ) AS before
+),
+deleted AS (
+  DELETE FROM check_results r
+  USING cutoff
+  WHERE r.checked_at < cutoff.before
+    AND EXISTS (
+      SELECT 1 FROM check_rollups_hourly h
+      WHERE h.monitor_id = r.monitor_id AND h.hour = date_trunc('hour', r.checked_at, 'UTC')
+    )
+  RETURNING 1
+)
+SELECT count(*)::int AS n FROM deleted`;
+
+const DELETE_HOURLY = `
+WITH deleted AS (
+  DELETE FROM check_rollups_hourly
+  WHERE hour < now() - make_interval(days => $1::int)
+  RETURNING 1
+)
+SELECT count(*)::int AS n FROM deleted`;
+
+const DELETE_DAILY = `
+WITH deleted AS (
+  DELETE FROM check_rollups_daily
+  WHERE day < (now() AT TIME ZONE 'UTC')::date - $1::int
+  RETURNING 1
+)
+SELECT count(*)::int AS n FROM deleted`;
+
+// Open incidents stay however old they are. Alert deliveries go with their incident.
+const DELETE_INCIDENTS = `
+WITH deleted AS (
+  DELETE FROM incidents
+  WHERE resolved_at < now() - make_interval(days => $1::int)
+  RETURNING 1
+)
+SELECT count(*)::int AS n FROM deleted`;
 
 function iso(value: unknown): string | undefined {
   if (value instanceof Date) return value.toISOString();
@@ -324,6 +424,26 @@ export function createCheckerDb(query: Query, close: () => Promise<void>): Check
           resolvedAt: iso(r.resolved_at) ?? null,
           note: typeof r.note === "string" ? r.note : null,
         })),
+      };
+    },
+
+    async rollUpHours() {
+      const [row] = await query(ROLL_UP_HOURS, []);
+      return { hours: Number(row?.hours ?? 0), oldest: iso(row?.oldest) ?? null };
+    },
+
+    async rollUpDays(fromIso) {
+      await query(ROLL_UP_DAYS, [fromIso]);
+    },
+
+    async applyRetention() {
+      const count = async (sql: string, days: number) =>
+        Number((await query(sql, [days]))[0]?.n ?? 0);
+      return {
+        raw: await count(DELETE_RAW, RETENTION_DAYS.raw),
+        hourly: await count(DELETE_HOURLY, RETENTION_DAYS.hourly),
+        daily: await count(DELETE_DAILY, RETENTION_DAYS.daily),
+        incidents: await count(DELETE_INCIDENTS, RETENTION_DAYS.incidents),
       };
     },
 

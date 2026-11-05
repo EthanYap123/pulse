@@ -131,7 +131,7 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
 
     /**
      * Latency history for the chart. 24h returns every check; 7d and 30d return hourly
-     * buckets. Until the Phase 3 rollups exist, buckets come from raw checks (kept 7 days).
+     * buckets from the rollups.
      */
     async history(
       ownerId: string,
@@ -152,25 +152,32 @@ export function monitorsRepository(prisma: PrismaClient, cipher: Cipher) {
         return rows.map((r) => ({ t: r.t.toISOString(), ok: r.ok, latencyMs: r.latency_ms }));
       }
       const days = range === "7d" ? 7 : 30;
-      const rows = await prisma.$queryRaw<HourlyPoint[]>`
-        SELECT date_trunc('hour', checked_at) AS t,
-               count(*)::int AS checks,
-               (count(*) FILTER (WHERE NOT ok))::int AS failures,
-               round(avg(latency_ms) FILTER (WHERE ok))::int AS avg_ms,
-               round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok))::int AS p95_ms
-        FROM check_results
-        WHERE monitor_id = ${id}::uuid AND checked_at > now() - make_interval(days => ${days}::int)
-        GROUP BY 1
-        ORDER BY 1`;
+      const rows = await prisma.checkRollupHourly.findMany({
+        where: { monitorId: id, hour: { gte: new Date(Date.now() - days * 86_400_000) } },
+        orderBy: { hour: "asc" },
+      });
       return rows.map((r) => ({
-        t: r.t.toISOString(),
+        t: r.hour.toISOString(),
         ok: r.failures === 0,
-        latencyMs: r.avg_ms,
-        avgMs: r.avg_ms,
-        p95Ms: r.p95_ms,
+        latencyMs: r.latencyAvgMs,
+        avgMs: r.latencyAvgMs,
+        p95Ms: r.latencyP95Ms,
         checks: r.checks,
         failures: r.failures,
       }));
+    },
+
+    /** Daily uptime, oldest first. Null when the monitor isn't the owner's. */
+    async dailyUptime(ownerId: string, id: string, days: number) {
+      const monitor = await prisma.monitor.findFirst({
+        where: owned(ownerId, id),
+        select: { id: true },
+      });
+      if (!monitor) return null;
+      return prisma.checkRollupDaily.findMany({
+        where: { monitorId: id, day: { gte: new Date(Date.now() - days * 86_400_000) } },
+        orderBy: { day: "asc" },
+      });
     },
   };
 }
@@ -188,10 +195,3 @@ export type HistoryPoint = {
   failures?: number;
 };
 type RawPoint = { t: Date; ok: boolean; latency_ms: number | null };
-type HourlyPoint = {
-  t: Date;
-  checks: number;
-  failures: number;
-  avg_ms: number | null;
-  p95_ms: number | null;
-};

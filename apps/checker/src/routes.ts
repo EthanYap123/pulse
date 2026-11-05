@@ -19,7 +19,8 @@ export interface ShardClient {
 /** What the routes need from the Snapshots Durable Object. */
 export interface SnapshotClient {
   get(slug: string): Promise<StatusSnapshot | null>;
-  rebuildAll(): Promise<void>;
+  /** Rollups, retention and fresh snapshots. */
+  runHourly(): Promise<unknown>;
   refreshProjects(projectIds: string[]): Promise<void>;
 }
 
@@ -141,7 +142,7 @@ export function createRouter(deps: RouterDeps) {
       const results = await Promise.all(
         Array.from({ length: deps.shardCount }, (_, i) => deps.shard(i).flush()),
       );
-      await deps.snapshots.rebuildAll();
+      await deps.snapshots.runHourly();
       return json({ flushed: results.reduce((n, r) => n + r.flushed, 0) });
     }
 
