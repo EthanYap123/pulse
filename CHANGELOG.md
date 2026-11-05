@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Signed-out visitors no longer wake the API: the landing and login pages only check for a session if this browser has signed in.
 - Local Compose Postgres is published on port 5434 (override with `PULSE_DB_PORT`) to avoid clashing with a native install.
 - `next dev` no longer leaves changes in git (`next-env.d.ts` untracked, Next's `agentRules` off).
 - `/health` no longer queries the database (new `/health/db` does); web builds receive `API_URL`/`CHECKER_URL` under Turborepo strict env mode; Prisma config no longer falls back to a placeholder database URL.

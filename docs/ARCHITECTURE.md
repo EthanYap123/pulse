@@ -61,6 +61,7 @@ flowchart LR
 
 ### Signed-in dashboard
 
+0. A browser that has never signed in makes no API calls at all, so anonymous visitors and bots don't wake Render. The refresh cookie is HttpOnly and invisible to scripts, so a `localStorage` marker records that a session may exist; it holds nothing secret, and the cookie still decides.
 1. The browser only talks to the Vercel domain. `next.config` rewrites `/api/*` to the Render API, so the refresh-token cookie is **first-party** (no third-party cookie problems in Safari or Chrome).
 2. The API reads and writes Neon through Prisma. This wakes Neon, which is fine: a person is actively using the dashboard.
 3. Current status on the dashboard comes from the checker's live endpoint (proxied by the API) so it is never more than one tick old, while history (latency charts, incidents) comes from Neon.

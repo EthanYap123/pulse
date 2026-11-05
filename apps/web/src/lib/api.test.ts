@@ -64,6 +64,24 @@ describe("createApi", () => {
     expect(token()).toBeNull();
   });
 
+  it("reports a session as ended only when the API says so", async () => {
+    const onSessionEnded = vi.fn();
+    const answer = (fetch: () => Promise<Response>) =>
+      createApi({
+        getToken: () => null,
+        setToken: () => undefined,
+        onSessionEnded,
+        fetch,
+      });
+
+    await answer(() => Promise.reject(new Error("offline"))).refresh();
+    await answer(() => Promise.resolve(new Response(null, { status: 503 }))).refresh();
+    expect(onSessionEnded).not.toHaveBeenCalled();
+
+    await answer(() => Promise.resolve(new Response(null, { status: 401 }))).refresh();
+    expect(onSessionEnded).toHaveBeenCalledOnce();
+  });
+
   it("turns problem details into an ApiError with field errors", async () => {
     const { api } = setup(() =>
       Response.json(
