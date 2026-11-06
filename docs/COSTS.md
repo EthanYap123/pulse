@@ -4,21 +4,21 @@ Pulse must cost **$0** to build and run, on free tiers that need **no credit car
 
 Limits change. Re-check this file against the linked pages before each phase that adds a service, and update the "Checked" date.
 
-**Last checked: 2026-10-29**
+**Last checked: 2026-11-06** (Neon, Vercel and Render, for Phase 4). Other services: 2026-10-29.
 
 ## Summary
 
-| Service                              | Used for                                  | Plan                     | Card needed?                                        | Status                                   |
-| ------------------------------------ | ----------------------------------------- | ------------------------ | --------------------------------------------------- | ---------------------------------------- |
-| Cloudflare Workers + Durable Objects | Checker, live status, Telegram webhook    | Workers Free             | No                                                  | OK                                       |
-| Neon                                 | Postgres (source of truth)                | Free                     | No (pricing page: "no credit card required")        | OK, compute hours are the tightest limit |
-| Vercel                               | Next.js dashboard and public status pages | Hobby                    | No                                                  | OK, non-commercial use only              |
-| Render                               | Fastify API (Docker image)                | Free web service         | **Unclear**, see [Risks](#risks-and-open-questions) | Confirm before Phase 4                   |
-| Sentry                               | Error tracking for API and web            | Developer (free)         | No                                                  | OK                                       |
-| Discord                              | Alerts via channel webhooks               | Free                     | No                                                  | OK                                       |
-| Telegram                             | Alerts via Bot API                        | Free                     | No                                                  | OK                                       |
-| GitHub Actions                       | CI/CD                                     | Free for public repos    | No                                                  | OK                                       |
-| GitHub Container Registry            | API Docker image                          | Free for public packages | No                                                  | OK                                       |
+| Service                              | Used for                                  | Plan                     | Card needed?                                                   | Status                                   |
+| ------------------------------------ | ----------------------------------------- | ------------------------ | -------------------------------------------------------------- | ---------------------------------------- |
+| Cloudflare Workers + Durable Objects | Checker, live status, Telegram webhook    | Workers Free             | No                                                             | OK                                       |
+| Neon                                 | Postgres (source of truth)                | Free                     | No (pricing page: "no credit card required")                   | OK, compute hours are the tightest limit |
+| Vercel                               | Next.js dashboard and public status pages | Hobby                    | No                                                             | OK, non-commercial use only              |
+| Render                               | Fastify API (Docker image)                | Free web service         | No (tested 2026-11-06, see [Render](#render-free-web-service)) | OK                                       |
+| Sentry                               | Error tracking for API and web            | Developer (free)         | No                                                             | OK                                       |
+| Discord                              | Alerts via channel webhooks               | Free                     | No                                                             | OK                                       |
+| Telegram                             | Alerts via Bot API                        | Free                     | No                                                             | OK                                       |
+| GitHub Actions                       | CI/CD                                     | Free for public repos    | No                                                             | OK                                       |
+| GitHub Container Registry            | API Docker image                          | Free for public packages | No                                                             | OK                                       |
 
 ## Cloudflare Workers (Free)
 
@@ -56,6 +56,7 @@ Source: [Neon plans](https://neon.com/docs/introduction/plans), [Neon pricing](h
 | Scale to zero          | Suspends after **5 min** idle, cannot be disabled              | Design so Neon is idle most of the time.                             |
 | Running out of compute | Compute suspended until the next month (data kept)             | Budget below leaves ~50% headroom.                                   |
 | Storage                | 1 GB per project (20 GB across projects)                       | Retention and rollups, see below.                                    |
+| Projects               | 100                                                            | Pulse has its own, so other projects don't use its compute budget.   |
 | Branches               | 10 per project                                                 | 2 used: `main` (production) and `staging`.                           |
 | Egress                 | 5 GB per project per month                                     | Small JSON queries; well under.                                      |
 | Point-in-time restore  | 6-hour window                                                  | Documented in the Phase 4 rollback procedure.                        |
@@ -116,6 +117,8 @@ Source: [Vercel limits](https://vercel.com/docs/limits), [Fair use guidelines](h
 ## Render (Free web service)
 
 Source: [Render free instances](https://render.com/docs/free), [Deploying an image](https://render.com/docs/deploying-an-image)
+
+**Tested 2026-11-06:** a Free web service was created from a prebuilt Docker image, in Singapore, on the Hobby workspace plan. Render asked for no card, and billing still shows "No card on file". The docs don't state whether Free services can use prebuilt images, so this was checked by doing it. New services default to a paid instance type, so **Free must be selected by hand**.
 
 | Limit                     | Free                                                                                       | How Pulse stays inside it                                                                  |
 | ------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -179,7 +182,7 @@ When the global cap is reached, new monitors are refused with a clear message in
 
 ## Risks and open questions
 
-1. **Render may ask for a card.** Render's docs only mention a payment method for overages, but community reports say some accounts are asked for card verification at sign-up (with a reversed $1 charge). **Stop and ask before Phase 4** if Render asks for one. Fallbacks that need no card: run the API as Next.js route handlers on Vercel (no Docker deploy target), or keep the Docker image as a CI artifact only and document it.
+1. ~~Render may ask for a card~~ **Resolved 2026-11-06:** a Free image-backed service was created with no card (see [Render](#render-free-web-service)).
 2. ~~Durable Object subrequest budget when called from a cron Worker~~ **Resolved 2026-11-01:** each object has its own 50 (spike results in `spikes/do-subrequests/RESULTS.md`).
 3. **Durable Object duration** in the worst case is ~78% of the daily cap. If real numbers are higher, lower the timeout or the shard count.
 4. **Neon compute estimate for dashboard use** is a guess. Watch the Neon usage page weekly after launch.
