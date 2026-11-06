@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Hosting accounts confirmed on free plans with no card: Render, Vercel and Neon (production and staging branches, Singapore, Postgres 17). Free-tier limits re-checked in `docs/COSTS.md`.
 - Hourly and daily rollups with retention: raw checks kept 7 days, hourly rollups 30, daily rollups and resolved incidents 400. The 7- and 30-day charts and the status page bars now read rollups, so 30-day charts and 90-day bars show their full range. Added `GET /v1/monitors/:id/uptime`.
 - Public status pages at `/status/<slug>`: overall status, 90-day uptime bars and recent incidents, served from checker snapshots so they keep working when the API and Postgres are down. Owners can make a page private or hide individual monitors.
 - Discord alerts: alert channels per project, outage and recovery messages sent by the checker with retries, cooldown for flapping monitors, and channels turned off when Discord rejects the webhook.
