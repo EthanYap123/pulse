@@ -57,7 +57,7 @@ Source: [Neon plans](https://neon.com/docs/introduction/plans), [Neon pricing](h
 | Running out of compute | Compute suspended until the next month (data kept)             | Budget below leaves ~50% headroom.                                   |
 | Storage                | 1 GB per project (20 GB across projects)                       | Retention and rollups, see below.                                    |
 | Projects               | 100                                                            | Pulse has its own, so other projects don't use its compute budget.   |
-| Branches               | 10 per project                                                 | 2 used: `main` (production) and `staging`.                           |
+| Branches               | 10 per project                                                 | 2 used: `production` and `staging`.                                  |
 | Egress                 | 5 GB per project per month                                     | Small JSON queries; well under.                                      |
 | Point-in-time restore  | 6-hour window                                                  | Documented in the Phase 4 rollback procedure.                        |
 
