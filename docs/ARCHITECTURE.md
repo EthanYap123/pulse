@@ -191,12 +191,14 @@ Neon is the source of truth for monitor config; shards hold a copy.
 
 ## 5. Environments
 
+Where each one is deployed: [DEPLOYMENT.md](DEPLOYMENT.md).
+
 |          | Local                                       | Staging                            | Production                 |
 | -------- | ------------------------------------------- | ---------------------------------- | -------------------------- |
 | Web      | `next dev`                                  | Vercel preview deployments         | Vercel production          |
 | API      | `tsx watch` against Docker Compose Postgres | Render service `pulse-api-staging` | Render service `pulse-api` |
 | Checker  | `wrangler dev --test-scheduled`             | Worker env `staging`               | Worker env `production`    |
-| Database | Docker Compose Postgres 17                  | Neon branch `staging`              | Neon branch `main`         |
+| Database | Docker Compose Postgres 17                  | Neon branch `staging`              | Neon branch `production`   |
 
 Neon's serverless driver talks HTTP/WebSocket, not the Postgres wire protocol, so it can't reach a plain Postgres container. **Decision (Phase 1):** the checker's queries go through a small `CheckerDb` interface with two implementations, picked by the `DB_DRIVER` variable: `neon-http` (Neon's serverless driver, used in Cloudflare) and `pg` (node-postgres over TCP, which runs in workerd with `nodejs_compat`, used with `wrangler dev` and in integration tests against Docker Compose Postgres). Both share the same SQL, so tests cover the queries that run in production.
 
