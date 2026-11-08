@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Checker deployed as staging and production Workers, and the web app on Vercel connected to the matching API and checker.
 - API deployed to Render for production and staging from an image published to GHCR, with migrated Neon databases. See `docs/DEPLOYMENT.md`.
 - Hosting accounts confirmed on free plans with no card: Render, Vercel and Neon (production and staging branches, Singapore, Postgres 17). Free-tier limits re-checked in `docs/COSTS.md`.
 - Hourly and daily rollups with retention: raw checks kept 7 days, hourly rollups 30, daily rollups and resolved incidents 400. The 7- and 30-day charts and the status page bars now read rollups, so 30-day charts and 90-day bars show their full range. Added `GET /v1/monitors/:id/uptime`.
