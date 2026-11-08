@@ -29,6 +29,36 @@ new_sqlite_classes = ["Shard"]
 tag = "v2"
 new_sqlite_classes = ["Snapshots"]
 
-# Staging/production environments arrive in Phase 4. Secrets (DATABASE_URL,
-# CHECKER_HMAC_SECRET, ENCRYPTION_KEY) are set with `wrangler secret put`; locally they
-# go in .dev.vars (see .dev.vars.example).
+# Deployed environments: `wrangler deploy --env staging` and `--env production` create the
+# Workers pulse-checker-staging and pulse-checker-production. Bindings and vars aren't
+# inherited, so each environment lists them. Secrets (DATABASE_URL, CHECKER_HMAC_SECRET,
+# ENCRYPTION_KEY) are set per environment with `wrangler secret put --env <name>`; locally
+# they go in .dev.vars (see .dev.vars.example). See docs/DEPLOYMENT.md.
+
+[env.staging]
+vars = { ENVIRONMENT = "staging", DB_DRIVER = "neon-http" }
+
+[env.staging.triggers]
+crons = ["*/5 * * * *"]
+
+[[env.staging.durable_objects.bindings]]
+name = "SHARD"
+class_name = "Shard"
+
+[[env.staging.durable_objects.bindings]]
+name = "SNAPSHOTS"
+class_name = "Snapshots"
+
+[env.production]
+vars = { ENVIRONMENT = "production", DB_DRIVER = "neon-http" }
+
+[env.production.triggers]
+crons = ["*/5 * * * *"]
+
+[[env.production.durable_objects.bindings]]
+name = "SHARD"
+class_name = "Shard"
+
+[[env.production.durable_objects.bindings]]
+name = "SNAPSHOTS"
+class_name = "Snapshots"

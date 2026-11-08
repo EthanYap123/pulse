@@ -11,6 +11,9 @@ out/
 coverage/
 *.tsbuildinfo
 
+# Vercel CLI project link
+.vercel/
+
 # Cloudflare Workers
 .wrangler/
 .dev.vars
