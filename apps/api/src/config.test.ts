@@ -15,6 +15,7 @@ describe("loadConfig", () => {
       encryptionKey: base.ENCRYPTION_KEY,
       port: 4000,
       version: "dev",
+      commit: "unknown",
       cookie: { path: "/api/v1/auth", secure: false },
       checker: null,
     });

@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Automatic deploys from GitHub Actions: every merge to `main` migrates and deploys staging, and a published release deploys production (API, checker and web). Each deploy waits until the API and checker report the new commit on `/health`.
 - Checker deployed as staging and production Workers, and the web app on Vercel connected to the matching API and checker.
 - API deployed to Render for production and staging from an image published to GHCR, with migrated Neon databases. See `docs/DEPLOYMENT.md`.
 - Hosting accounts confirmed on free plans with no card: Render, Vercel and Neon (production and staging branches, Singapore, Postgres 17). Free-tier limits re-checked in `docs/COSTS.md`.

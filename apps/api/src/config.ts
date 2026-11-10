@@ -11,6 +11,8 @@ const envSchema = z.object({
     .regex(/^[0-9a-fA-F]{64}$/, { message: "ENCRYPTION_KEY must be 64 hex characters (32 bytes)" }),
   PORT: z.coerce.number().int().positive().default(4000),
   APP_VERSION: z.string().default("dev"),
+  /** Commit the image was built from (set by the Dockerfile); lets CD confirm a deploy landed. */
+  GIT_COMMIT: z.string().default("unknown"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   /** Path the browser sees for auth routes (through the Next.js /api rewrite). */
   COOKIE_PATH: z.string().default("/api/v1/auth"),
@@ -25,6 +27,7 @@ export type Config = {
   encryptionKey: string;
   port: number;
   version: string;
+  commit: string;
   cookie: { path: string; secure: boolean };
   checker: { url: string; secret: string } | null;
 };
@@ -47,6 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     encryptionKey: e.ENCRYPTION_KEY,
     port: e.PORT,
     version: e.APP_VERSION,
+    commit: e.GIT_COMMIT,
     // Secure cookies need HTTPS outside localhost; local dev runs on plain http.
     cookie: { path: e.COOKIE_PATH, secure: e.NODE_ENV === "production" },
     checker:

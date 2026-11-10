@@ -7,6 +7,7 @@ export const testConfig: Config = {
   encryptionKey: "00".repeat(32),
   port: 0,
   version: "test",
+  commit: "test",
   cookie: { path: "/api/v1/auth", secure: false },
   checker: null,
 };

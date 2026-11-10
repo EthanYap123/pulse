@@ -46,15 +46,17 @@ export function buildApp({
 
   // Liveness for Render and the Docker HEALTHCHECK. Must not touch the database:
   // frequent probes would keep Neon awake and use up its compute hours.
-  app.get("/health", () => ({ status: "ok", version: config.version }));
+  app.get("/health", () => ({ status: "ok", version: config.version, commit: config.commit }));
 
   // Explicit database check for CI and manual debugging. Wakes Neon.
   app.get("/health/db", async (_request, reply) => {
     try {
       await repos.health.ping();
-      return { status: "ok", db: "ok", version: config.version };
+      return { status: "ok", db: "ok", version: config.version, commit: config.commit };
     } catch {
-      return reply.code(503).send({ status: "error", db: "error", version: config.version });
+      return reply
+        .code(503)
+        .send({ status: "error", db: "error", version: config.version, commit: config.commit });
     }
   });
 

@@ -5,6 +5,8 @@ export type Env = {
   SHARD: DurableObjectNamespace<Shard>;
   SNAPSHOTS: DurableObjectNamespace<Snapshots>;
   ENVIRONMENT?: string;
+  /** Commit this Worker was deployed from (`wrangler deploy --var COMMIT:<sha>`). */
+  COMMIT?: string;
   /** "pg" for local Postgres; anything else uses Neon's HTTP driver. */
   DB_DRIVER?: string;
   DATABASE_URL: string;

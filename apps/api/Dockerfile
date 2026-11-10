@@ -32,6 +32,9 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production PORT=4000
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
+# Reported by /health so a deploy can be confirmed. Last, so it doesn't bust the layers above.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \

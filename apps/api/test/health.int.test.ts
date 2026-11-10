@@ -18,6 +18,6 @@ afterAll(async () => {
 describe("GET /health/db against Postgres", () => {
   it("reaches the real database", async () => {
     const res = await app.inject({ method: "GET", url: "/health/db" });
-    expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test" });
+    expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test", commit: "test" });
   });
 });

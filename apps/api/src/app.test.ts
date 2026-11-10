@@ -13,7 +13,7 @@ describe("GET /health", () => {
     const app = buildApp({ prisma: fakePrisma(queryRaw), config: testConfig });
     const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok", version: "test" });
+    expect(res.json()).toEqual({ status: "ok", version: "test", commit: "test" });
     expect(queryRaw).not.toHaveBeenCalled();
   });
 });
@@ -26,7 +26,7 @@ describe("GET /health/db", () => {
     });
     const res = await app.inject({ method: "GET", url: "/health/db" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test" });
+    expect(res.json()).toEqual({ status: "ok", db: "ok", version: "test", commit: "test" });
   });
 
   it("returns 503 when the database is unreachable", async () => {
@@ -36,7 +36,7 @@ describe("GET /health/db", () => {
     });
     const res = await app.inject({ method: "GET", url: "/health/db" });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ status: "error", db: "error", version: "test" });
+    expect(res.json()).toEqual({ status: "error", db: "error", version: "test", commit: "test" });
   });
 });
 

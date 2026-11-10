@@ -19,6 +19,7 @@ export default {
       shardCount: LIMITS.shards,
       hmacSecret: env.CHECKER_HMAC_SECRET,
       environment: env.ENVIRONMENT ?? "local",
+      commit: env.COMMIT ?? "unknown",
       snapshots: {
         get: (slug) => snapshotsStub(env).get(slug),
         runHourly: () => snapshotsStub(env).runHourly(),
