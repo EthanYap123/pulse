@@ -13,11 +13,46 @@ Where each part of Pulse runs and how to change it. Free-tier limits are in [COS
 
 Everything runs in Singapore where the host offers a choice. The Cloudflare Worker runs globally.
 
-## API image
+## Automatic deploys
 
-[`publish-api-image.yml`](../.github/workflows/publish-api-image.yml) builds the API from `main` when API or shared code changes and pushes it to `ghcr.io/ethanyap123/pulse-api`, tagged `latest` and with the commit SHA. The image is public and contains no secrets; all configuration comes from the environment.
+[`deploy.yml`](../.github/workflows/deploy.yml) deploys without any manual step:
 
-Render doesn't redeploy when a new image is pushed. Until automatic deploys exist, use **Manual Deploy > Deploy latest reference** on each service.
+| Trigger                             | Deploys to | What                              |
+| ----------------------------------- | ---------- | --------------------------------- |
+| Push to `main` (every merged PR)    | staging    | Migrations, API, checker          |
+| A published GitHub release          | production | Migrations, API, checker, web     |
+| **Run workflow** on a branch or tag | either     | Same as above, for the chosen ref |
+
+Each run:
+
+1. Builds the API image for the commit and pushes `ghcr.io/ethanyap123/pulse-api:<sha>` (and `latest` for pushes to `main`). It skips the build if that tag already exists, so a release reuses the image staging ran. The image is public and contains no secrets.
+2. Runs `prisma migrate deploy` against the environment's Neon branch. The previous API keeps serving during this, so a migration must work with the code that is already deployed: add columns and tables first, remove them in a later release.
+3. Calls the Render deploy hook with `imgURL` set to the commit's image, then waits until `/health` reports that commit and `/health/db` reports `db: ok` and the right environment.
+4. Runs `wrangler deploy --env <name> --var COMMIT:<sha>` and waits until the Worker's `/health` reports that commit.
+5. Production only: builds the web app with the Vercel project's production variables and deploys it. `apps/web/vercel.json` turns off Vercel's own deploys of `main`, so production web changes only with a release. PRs still get preview deployments.
+
+Runs for the same environment queue up; one is never cancelled halfway.
+
+To release, create a tag and publish a release on GitHub (for example `gh release create v0.4.0 --generate-notes`).
+
+### GitHub environments
+
+Create the environments `staging` and `production` under **Settings > Environments**. Secret values exist only there and in the host dashboards. Requiring a reviewer on `production` is optional.
+
+| Name                     | Kind     | Environments | Value                                                                                     |
+| ------------------------ | -------- | ------------ | ----------------------------------------------------------------------------------------- |
+| `DATABASE_URL_DIRECT`    | secret   | both         | The Neon **direct** (not pooled) connection string for that branch                        |
+| `RENDER_DEPLOY_HOOK_URL` | secret   | both         | Render service > **Settings > Deploy Hook**                                               |
+| `CLOUDFLARE_API_TOKEN`   | secret   | both         | Cloudflare API token from the "Edit Cloudflare Workers" template, limited to this account |
+| `CLOUDFLARE_ACCOUNT_ID`  | variable | both         | Cloudflare account ID                                                                     |
+| `API_URL`                | variable | both         | That environment's Render URL                                                             |
+| `CHECKER_URL`            | variable | both         | That environment's Worker URL                                                             |
+| `VERCEL_TOKEN`           | secret   | production   | Vercel account token                                                                      |
+| `VERCEL_ORG_ID`          | variable | production   | `orgId` in `.vercel/project.json` after `vercel link`                                     |
+| `VERCEL_PROJECT_ID`      | variable | production   | `projectId` in the same file                                                              |
+| `WEB_URL`                | variable | production   | https://pulse-eta-sage.vercel.app                                                         |
+
+The Render services must use `ghcr.io/ethanyap123/pulse-api` as their image: Render rejects an `imgURL` whose registry or repository differs from the service's.
 
 ## API configuration
 
@@ -49,6 +84,8 @@ Production must answer `"version":"production"` and `"db":"ok"`. A free instance
 
 [`wrangler.toml`](../apps/checker/wrangler.toml) defines the `staging` and `production` environments. Each is its own Worker with its own Durable Objects, cron trigger and secrets:
 
+Deploys normally come from the workflow above. By hand:
+
 ```bash
 cd apps/checker
 npx wrangler deploy --env staging
@@ -73,7 +110,7 @@ The Vercel project builds `apps/web`. Next.js bakes the rewrites in at build tim
 | `API_URL`     | Production API on Render  | Staging API on Render  |
 | `CHECKER_URL` | Production checker Worker | Staging checker Worker |
 
-Vercel deploys every push to `main` to production and every PR as a preview.
+Every PR gets a preview deployment, built against staging. Production deploys only from a release (see [Automatic deploys](#automatic-deploys)).
 
 ## Database migrations
 

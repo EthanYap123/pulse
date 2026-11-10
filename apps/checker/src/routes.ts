@@ -30,6 +30,7 @@ export type RouterDeps = {
   snapshots: SnapshotClient;
   hmacSecret: string | undefined;
   environment: string;
+  commit: string;
   now?: () => number;
 };
 
@@ -88,7 +89,7 @@ export function createRouter(deps: RouterDeps) {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return json({ status: "ok", environment: deps.environment });
+      return json({ status: "ok", environment: deps.environment, commit: deps.commit });
     }
     const statusMatch = /^\/public\/v1\/status\/([a-z0-9-]{3,40})$/.exec(url.pathname);
     if (request.method === "GET" && statusMatch) return statusPage(statusMatch[1]!);

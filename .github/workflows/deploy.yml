@@ -1,0 +1,184 @@
+name: Deploy
+
+# Every push to main deploys to staging. Publishing a release deploys that release's commit to
+# production. Run it by hand to redeploy a branch or tag to either environment.
+#
+# Order: API image -> database migrations -> API and checker -> web (production only; staging
+# web is the per-PR Vercel preview). Migrations run while the previous API is still serving, so
+# every migration must work with the code that is already deployed (add first, remove later).
+#
+# Secrets live in the GitHub environments `staging` and `production`; see docs/DEPLOYMENT.md.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy the selected branch or tag
+        type: choice
+        options: [staging, production]
+        required: true
+
+# One deploy per environment at a time, and never cancel one halfway through.
+concurrency:
+  group: deploy-${{ github.event_name == 'release' && 'production' || inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+  TURBO_TELEMETRY_DISABLED: 1
+  IMAGE: ghcr.io/ethanyap123/pulse-api
+
+jobs:
+  image:
+    name: API image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+    steps:
+      - name: Pick the environment
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = release ]; then env=production
+          elif [ -n "${{ inputs.environment }}" ]; then env="${{ inputs.environment }}"
+          else env=staging; fi
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${{ github.sha }} to $env" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check for an existing image
+        id: existing
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:${{ github.sha }}" > /dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and push
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          # A plain image manifest, so hosts that pull by tag don't need attestation support.
+          provenance: false
+          build-args: GIT_COMMIT=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ github.event_name == 'push' && format('{0}:latest', env.IMAGE) || '' }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate:
+    name: Database migrations
+    needs: image
+    runs-on: ubuntu-latest
+    environment: ${{ needs.image.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: prisma migrate deploy
+        run: pnpm --filter @pulse/api db:deploy
+        env:
+          # Direct (not pooled) connection string: migrations need a session.
+          DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
+
+  api:
+    name: API (Render)
+    needs: [image, migrate]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.image.outputs.environment }}
+      url: ${{ vars.API_URL }}
+    steps:
+      - name: Trigger the deploy hook with this commit's image
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          img=$(jq -rn --arg v "$IMAGE:${{ github.sha }}" '$v | @uri')
+          curl -fsS -X POST -o /dev/null "$HOOK&imgURL=$img"
+      - name: Wait for the new instance
+        env:
+          API_URL: ${{ vars.API_URL }}
+          ENVIRONMENT: ${{ needs.image.outputs.environment }}
+        run: |
+          # /health doesn't touch the database. Render pulls the image, starts it, then switches
+          # traffic; a free instance can also be asleep. Allow up to 15 minutes.
+          for _ in $(seq 1 90); do
+            commit=$(curl -fsS --max-time 20 "$API_URL/health" | jq -r .commit || true)
+            if [ "$commit" = "${{ github.sha }}" ]; then break; fi
+            echo "Serving ${commit:-nothing yet}, waiting..."
+            sleep 10
+          done
+          [ "$commit" = "${{ github.sha }}" ] || { echo "::error::API never reported ${{ github.sha }}"; exit 1; }
+          # One database check (wakes Neon once) to confirm the new config.
+          body=$(curl -fsS --max-time 30 "$API_URL/health/db")
+          echo "$body"
+          echo "$body" | jq -e --arg env "$ENVIRONMENT" '.db == "ok" and .version == $env' > /dev/null
+
+  checker:
+    name: Checker (Cloudflare)
+    needs: [image, migrate]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.image.outputs.environment }}
+      url: ${{ vars.CHECKER_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run build --filter=@pulse/shared
+      - name: wrangler deploy
+        working-directory: apps/checker
+        run: pnpm exec wrangler deploy --env "${{ needs.image.outputs.environment }}" --var "COMMIT:${{ github.sha }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Check the Worker
+        env:
+          CHECKER_URL: ${{ vars.CHECKER_URL }}
+          ENVIRONMENT: ${{ needs.image.outputs.environment }}
+        run: |
+          for _ in $(seq 1 12); do
+            body=$(curl -fsS --max-time 10 "$CHECKER_URL/health" || true)
+            if echo "$body" | jq -e --arg env "$ENVIRONMENT" --arg sha "${{ github.sha }}" \
+              '.environment == $env and .commit == $sha' > /dev/null 2>&1; then
+              echo "$body"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Checker never reported ${{ github.sha }} ($body)"
+          exit 1
+
+  web:
+    name: Web (Vercel production)
+    needs: [image, api, checker]
+    if: needs.image.outputs.environment == 'production'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.WEB_URL }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # Built here with the production variables from the Vercel project, then uploaded as is.
+      - run: pnpm dlx vercel@65.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: pnpm dlx vercel@65.3.1 build --prod --token="$VERCEL_TOKEN"
+      - run: pnpm dlx vercel@65.3.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"

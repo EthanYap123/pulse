@@ -63,6 +63,7 @@ function setup(secret: string | null = SECRET) {
     snapshots,
     hmacSecret: secret ?? undefined,
     environment: "test",
+    commit: "test",
   });
   return { handle, shards, snapshots };
 }
@@ -81,7 +82,7 @@ describe("checker routes", () => {
   it("answers /health without auth", async () => {
     const { handle } = setup();
     const res = await handle(new Request("https://checker.test/health"));
-    expect(await res.json()).toEqual({ status: "ok", environment: "test" });
+    expect(await res.json()).toEqual({ status: "ok", environment: "test", commit: "test" });
   });
 
   it("rejects unsigned and wrongly signed internal requests", async () => {
