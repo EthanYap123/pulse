@@ -6,7 +6,7 @@
 
 Small teams and solo developers ship side projects, APIs and student apps on free hosting. Those apps go down (cold starts, expired databases, bad deploys) and nobody notices until a user complains. Existing monitors either cost money for the useful parts or don't give the developer a page they can share with users.
 
-Pulse checks URLs and API endpoints on a schedule, tells the owner on Discord or Telegram when something breaks, and gives each project a public status page with uptime history. It runs entirely on free tiers, and its limits are designed around those tiers (see [COSTS.md](COSTS.md)).
+Pulse checks URLs and API endpoints on a schedule, tells the owner on Discord when something breaks, and gives each project a public status page with uptime history. It runs entirely on free tiers, and its limits are designed around those tiers (see [COSTS.md](COSTS.md)).
 
 ## 2. Goals and non-goals
 
@@ -23,6 +23,7 @@ Pulse checks URLs and API endpoints on a schedule, tells the owner on Discord or
 - Keyword/body matching, TCP/ping/DNS/SSL-expiry checks, heartbeat (cron) monitors.
 - Teams, roles or shared projects (one owner per project).
 - Email or SMS alerts (Render's free tier blocks SMTP ports; SMS costs money).
+- Telegram alerts (dropped 2026-11-10, see US-10). Discord is the only alert channel in v1.0.
 - Custom domains for status pages, paid plans, billing.
 - Manually posted incident updates beyond a single note per incident.
 
@@ -99,10 +100,7 @@ IDs are referenced from issues and tests. "Must" stories are v1.0; "Should" stor
 - I get exactly one message when an incident opens and one when it resolves, with monitor name, URL, cause and duration.
 - If Discord returns 404 (webhook deleted), the channel is disabled and the dashboard shows why.
 
-**US-10 (Must) Telegram alerts.** As a solo developer, I want alerts in Telegram.
-
-- I link a chat by opening a one-time deep link to the Pulse bot (`/start <code>`, code valid 15 minutes); no bot token is ever handled by the user.
-- Same open/resolve messages and test message as Discord.
+**US-10 (Dropped) Telegram alerts.** Dropped from v1.0 on 2026-11-10; Discord covers the alerting need. The ID is kept so existing references stay valid.
 
 **US-11 (Must) No alert storms.** As a solo developer, I don't want a flapping service to spam me.
 

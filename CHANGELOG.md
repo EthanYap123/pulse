@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+
+- Telegram alerts dropped from v1.0. Discord is the only alert channel.
+
 ### Added
 
 - Checker deployed as staging and production Workers, and the web app on Vercel connected to the matching API and checker.

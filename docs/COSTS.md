@@ -10,13 +10,12 @@ Limits change. Re-check this file against the linked pages before each phase tha
 
 | Service                              | Used for                                  | Plan                     | Card needed?                                                   | Status                                   |
 | ------------------------------------ | ----------------------------------------- | ------------------------ | -------------------------------------------------------------- | ---------------------------------------- |
-| Cloudflare Workers + Durable Objects | Checker, live status, Telegram webhook    | Workers Free             | No                                                             | OK                                       |
+| Cloudflare Workers + Durable Objects | Checker, live status                      | Workers Free             | No                                                             | OK                                       |
 | Neon                                 | Postgres (source of truth)                | Free                     | No (pricing page: "no credit card required")                   | OK, compute hours are the tightest limit |
 | Vercel                               | Next.js dashboard and public status pages | Hobby                    | No                                                             | OK, non-commercial use only              |
 | Render                               | Fastify API (Docker image)                | Free web service         | No (tested 2026-11-06, see [Render](#render-free-web-service)) | OK                                       |
 | Sentry                               | Error tracking for API and web            | Developer (free)         | No                                                             | OK                                       |
 | Discord                              | Alerts via channel webhooks               | Free                     | No                                                             | OK                                       |
-| Telegram                             | Alerts via Bot API                        | Free                     | No                                                             | OK                                       |
 | GitHub Actions                       | CI/CD                                     | Free for public repos    | No                                                             | OK                                       |
 | GitHub Container Registry            | API Docker image                          | Free for public packages | No                                                             | OK                                       |
 
@@ -126,7 +125,7 @@ Source: [Render free instances](https://render.com/docs/free), [Deploying an ima
 | Spin-down                 | After **15 min** with no inbound traffic                                                   | Accepted. Public status pages don't use the API, so only logged-in users see a cold start. |
 | Spin-up                   | About **1 minute**                                                                         | Dashboard shows a "waking the API" state.                                                  |
 | Disk                      | No persistent disk                                                                         | API is stateless.                                                                          |
-| Outbound ports            | 25, 465, 587 blocked                                                                       | No email; alerts use HTTPS (Discord, Telegram).                                            |
+| Outbound ports            | 25, 465, 587 blocked                                                                       | No email; alerts use HTTPS (Discord).                                                      |
 | Bandwidth / build minutes | Workspace allowance; without a card, services are **suspended** (not billed) when exceeded | Images are built in GitHub Actions, not on Render, so Render build minutes stay near zero. |
 | Prebuilt images           | Image-backed services deploy via a **deploy hook** (no auto-redeploy on new tag)           | CD calls the deploy hook with the new GHCR tag.                                            |
 | Rollback                  | To the two most recent previous deploys                                                    | Documented in Phase 4.                                                                     |
@@ -150,13 +149,6 @@ Source: [Discord rate limits](https://docs.discord.com/developers/topics/rate-li
 - No fixed webhook rate is published; limits are **per webhook** and returned in `X-RateLimit-*` headers. A 429 carries `Retry-After`.
 - 10,000 invalid requests (401/403/429) per 10 minutes gets an IP temporarily banned; Cloudflare Worker IPs are shared, so Pulse must respect 429s and never retry blindly.
 - A **404** means the webhook was deleted: Pulse disables that channel and stops sending.
-
-## Telegram Bot API
-
-Source: [Bots FAQ](https://core.telegram.org/bots/faq)
-
-- Free. Limits: about **1 message per second per chat**, **20 messages per minute per group**, about **30 messages per second** overall.
-- Pulse sends at most one message per incident event per chat, so these limits are far away. Paid broadcasts are not used.
 
 ## GitHub Actions and Container Registry
 
