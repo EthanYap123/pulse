@@ -97,13 +97,13 @@ erDiagram
   alert_channels {
     uuid id PK
     uuid project_id FK
-    channel_type type "discord or telegram"
+    channel_type type "discord"
     text name
     bytea secret_enc "AES-256-GCM"
     smallint cooldown_minutes "default 10"
     channel_state state
     text disabled_reason "nullable"
-    text link_code_hash "telegram linking, nullable"
+    text link_code_hash "unused, nullable"
     timestamptz link_expires_at "nullable"
     timestamptz created_at
   }
@@ -133,16 +133,16 @@ Prisma doesn't model CHECK constraints, so they are appended to the migration SQ
 
 ## Enums
 
-| Enum             | Values                                                          |
-| ---------------- | --------------------------------------------------------------- |
-| `http_method`    | `GET`, `HEAD`                                                   |
-| `monitor_status` | `pending`, `up`, `failing`, `down`, `recovering`, `paused`      |
-| `check_error`    | `status`, `timeout`, `dns`, `tls`, `connection`                 |
-| `resolve_reason` | `recovered`, `paused`, `deleted`                                |
-| `channel_type`   | `discord`, `telegram`                                           |
-| `channel_state`  | `pending_link` (Telegram before `/start`), `active`, `disabled` |
-| `alert_event`    | `opened`, `resolved`                                            |
-| `delivery_state` | `pending`, `sent`, `suppressed`, `failed`                       |
+| Enum             | Values                                                     |
+| ---------------- | ---------------------------------------------------------- |
+| `http_method`    | `GET`, `HEAD`                                              |
+| `monitor_status` | `pending`, `up`, `failing`, `down`, `recovering`, `paused` |
+| `check_error`    | `status`, `timeout`, `dns`, `tls`, `connection`            |
+| `resolve_reason` | `recovered`, `paused`, `deleted`                           |
+| `channel_type`   | `discord` (`telegram` exists but is unused, see below)     |
+| `channel_state`  | `active`, `disabled` (`pending_link` exists but is unused) |
+| `alert_event`    | `opened`, `resolved`                                       |
+| `delivery_state` | `pending`, `sent`, `suppressed`, `failed`                  |
 
 ## Constraints and indexes
 
@@ -168,7 +168,8 @@ All foreign keys from `monitors` downwards use `ON DELETE CASCADE`, so deleting 
 
 - **Caps** (3 projects, 10 monitors per user, 5 channels per project, 200 global) are enforced by the API in a transaction, not by the schema, because they are config values.
 - **`monitors.last_status` / `last_checked_at`** are denormalised and updated at the hourly flush and on incident events. The dashboard shows the live value from the checker and falls back to these when the checker can't be reached.
-- **Secrets:** `alert_channels.secret_enc` holds the Discord webhook URL or the Telegram chat id, encrypted. Custom request header values in `monitors.headers` are encrypted the same way, because they often contain API keys.
+- **Secrets:** `alert_channels.secret_enc` holds the Discord webhook URL, encrypted. Custom request header values in `monitors.headers` are encrypted the same way, because they often contain API keys.
+- **Leftovers from Telegram:** Telegram alerts were dropped from v1.0. The `telegram` and `pending_link` enum values and the `link_code_hash` / `link_expires_at` columns stay in the schema, unused, because removing enum values means rebuilding the type. The API refuses `telegram` channels.
 - **Not stored in Postgres:** per-monitor counters and the unflushed check buffer live in the shard Durable Objects' SQLite (see [ARCHITECTURE.md](ARCHITECTURE.md#33-incident-detection)). Postgres is still the source of truth for config and history.
 - **Uptime %** is `1 - failures / checks` over the period, summed from rollups. A day with zero checks (monitor paused or added later) shows as "no data", not 100%.
 - **Storage estimate** at the global cap: < 100 MB (see [COSTS.md](COSTS.md#storage-budget-1-gb)).

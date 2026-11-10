@@ -5,7 +5,7 @@
 Two HTTP surfaces exist:
 
 1. **REST API** (`apps/api`, Render). Base URL in the browser: `/api/v1` on the web domain (Next.js rewrites to Render). Direct base URL: `https://<render-service>/v1`.
-2. **Checker endpoints** (`apps/checker`, Cloudflare Worker): public status JSON, internal config sync, Telegram webhook.
+2. **Checker endpoints** (`apps/checker`, Cloudflare Worker): public status JSON and internal config sync.
 
 ## Conventions
 
@@ -186,25 +186,24 @@ type Delivery = {
 
 ### Alert channels
 
-| Method | Path                               | Body                                                      | Response                                                                                                                                                            |
-| ------ | ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/v1/projects/:projectId/channels` |                                                           | `200 { items: Channel[] }`                                                                                                                                          |
-| POST   | `/v1/projects/:projectId/channels` | `{ type: "discord", name, webhookUrl, cooldownMinutes? }` | `201 Channel`                                                                                                                                                       |
-| POST   | `/v1/projects/:projectId/channels` | `{ type: "telegram", name, cooldownMinutes? }`            | `201 Channel & { linkUrl: "https://t.me/<bot>?start=<code>", linkExpiresAt }` (state `pending_link`) **(Telegram: not yet; the API currently refuses it with 422)** |
-| PATCH  | `/v1/channels/:channelId`          | `{ name?, webhookUrl?, cooldownMinutes?, enabled? }`      | `200 Channel`                                                                                                                                                       |
-| POST   | `/v1/channels/:channelId/test`     |                                                           | Sends now: `200 { sent: true }` · `409 channel_inactive` · `502 channel_disabled` (Discord said 404/401/403; the channel is turned off) · `502 alert_failed`        |
-| DELETE | `/v1/channels/:channelId`          |                                                           | `204`                                                                                                                                                               |
+| Method | Path                               | Body                                                      | Response                                                                                                                                                     |
+| ------ | ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/v1/projects/:projectId/channels` |                                                           | `200 { items: Channel[] }`                                                                                                                                   |
+| POST   | `/v1/projects/:projectId/channels` | `{ type: "discord", name, webhookUrl, cooldownMinutes? }` | `201 Channel`                                                                                                                                                |
+| PATCH  | `/v1/channels/:channelId`          | `{ name?, webhookUrl?, cooldownMinutes?, enabled? }`      | `200 Channel`                                                                                                                                                |
+| POST   | `/v1/channels/:channelId/test`     |                                                           | Sends now: `200 { sent: true }` · `409 channel_inactive` · `502 channel_disabled` (Discord said 404/401/403; the channel is turned off) · `502 alert_failed` |
+| DELETE | `/v1/channels/:channelId`          |                                                           | `204`                                                                                                                                                        |
 
 ```ts
 type Channel = {
   id: string;
   projectId: string;
-  type: "discord" | "telegram";
+  type: "discord";
   name: string;
   cooldownMinutes: number;
-  state: "pending_link" | "active" | "disabled";
+  state: "active" | "disabled";
   disabledReason: string | null;
-  target: string; // masked, e.g. "discord.com/api/webhooks/1234…" or "Telegram chat ****5678"
+  target: string; // masked, e.g. "discord.com/api/webhooks/1234…"
   createdAt: string;
 };
 ```
@@ -262,23 +261,17 @@ type StatusPage = {
 
 HMAC auth: headers `X-Pulse-Timestamp` (unix seconds) and `X-Pulse-Signature: sha256=<hex>` over `timestamp + "." + method + "." + path + "." + body`, with a shared secret. Requests older than 300 s are rejected; comparison is constant-time.
 
-### Telegram webhook
-
-| Method | Path                | Auth                                     | Body                                                                                                                                                         |
-| ------ | ------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/telegram/webhook` | `X-Telegram-Bot-Api-Secret-Token` header | Telegram `Update`. On `/start <code>`: match the channel by code hash, store the encrypted chat id, set `active`, reply "Linked to <project>". Always `200`. |
-
 ## Story coverage
 
-| Story               | Endpoint / page                                                                            |
-| ------------------- | ------------------------------------------------------------------------------------------ |
-| US-01, US-02        | `/v1/auth/*`, `/v1/me`                                                                     |
-| US-03               | `/v1/projects`                                                                             |
-| US-04, US-05        | `/v1/projects/:id/monitors`, `/v1/monitors/:id`, pause/resume, sync to checker             |
-| US-06               | `GET /v1/projects/:id/monitors` (live via `/internal/v1/live`)                             |
-| US-07               | `GET /v1/monitors/:id/checks`                                                              |
-| US-08               | Checker state machine; `/v1/projects/:id/incidents`                                        |
-| US-09, US-10, US-11 | `/v1/projects/:id/channels`, `/v1/channels/:id/test`, `/telegram/webhook`, delivery outbox |
-| US-12               | `PATCH /v1/incidents/:id`                                                                  |
-| US-13, US-14        | `/status/<slug>` page ← `GET /public/v1/status/:slug`                                      |
-| US-15               | Checker hourly job (no endpoint)                                                           |
+| Story        | Endpoint / page                                                                |
+| ------------ | ------------------------------------------------------------------------------ |
+| US-01, US-02 | `/v1/auth/*`, `/v1/me`                                                         |
+| US-03        | `/v1/projects`                                                                 |
+| US-04, US-05 | `/v1/projects/:id/monitors`, `/v1/monitors/:id`, pause/resume, sync to checker |
+| US-06        | `GET /v1/projects/:id/monitors` (live via `/internal/v1/live`)                 |
+| US-07        | `GET /v1/monitors/:id/checks`                                                  |
+| US-08        | Checker state machine; `/v1/projects/:id/incidents`                            |
+| US-09, US-11 | `/v1/projects/:id/channels`, `/v1/channels/:id/test`, delivery outbox          |
+| US-12        | `PATCH /v1/incidents/:id`                                                      |
+| US-13, US-14 | `/status/<slug>` page ← `GET /public/v1/status/:slug`                          |
+| US-15        | Checker hourly job (no endpoint)                                               |

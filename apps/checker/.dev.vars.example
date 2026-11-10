@@ -11,7 +11,3 @@ DATABASE_URL=postgresql://pulse:pulse@localhost:5434/pulse
 # Must match apps/api/.env.
 CHECKER_HMAC_SECRET=
 ENCRYPTION_KEY=
-
-# Added in later phases:
-# TELEGRAM_BOT_TOKEN=
-# TELEGRAM_WEBHOOK_SECRET=

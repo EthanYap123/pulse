@@ -43,7 +43,7 @@ describe("channelInputSchema", () => {
     );
   });
 
-  it("doesn't accept Telegram yet", () => {
+  it("doesn't accept Telegram", () => {
     expect(channelInputSchema.safeParse({ type: "telegram", name: "x" }).success).toBe(false);
   });
 });

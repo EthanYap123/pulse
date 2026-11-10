@@ -1,6 +1,6 @@
 # Pulse
 
-Uptime monitoring with public status pages. Create monitors for URLs and API endpoints, get alerted on Discord or Telegram when they go down, and share a status page with uptime history.
+Uptime monitoring with public status pages. Create monitors for URLs and API endpoints, get alerted on Discord when they go down, and share a status page with uptime history.
 
 > Work in progress. Requirements and design live in [`docs/`](docs/); see [`CHANGELOG.md`](CHANGELOG.md) for progress.
 
@@ -10,7 +10,7 @@ Uptime monitoring with public status pages. Create monitors for URLs and API end
 - `apps/api`: Fastify + Prisma REST API (Docker image on Render)
 - `apps/checker`: Cloudflare Worker on a cron trigger that runs the checks
 - `packages/shared`: types, zod schemas and incident logic
-- Postgres on Neon; alerts through Discord webhooks and a Telegram bot
+- Postgres on Neon; alerts through Discord webhooks
 
 Everything runs on free tiers with no card. See [`docs/COSTS.md`](docs/COSTS.md).
 

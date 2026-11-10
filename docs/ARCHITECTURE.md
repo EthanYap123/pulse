@@ -40,7 +40,6 @@ flowchart LR
   DB[("Neon Postgres")]
   Targets[["Monitored URLs"]]
   Discord[["Discord webhook"]]
-  Telegram[["Telegram Bot API"]]
 
   Owner -- "/api/* rewrite (first-party cookie)" --> Web
   Web -- "REST" --> API
@@ -53,8 +52,6 @@ flowchart LR
   Shards -- "HTTP checks" --> Targets
   Shards -- "hourly flush, incident writes<br/>serverless driver" --> DB
   Shards -- "alerts" --> Discord
-  Shards -- "alerts" --> Telegram
-  Telegram -- "/start code webhook" --> Cron
 ```
 
 ## 2. Request paths
@@ -149,7 +146,6 @@ Incidents are rare, so they are written to Neon immediately instead of waiting f
 Delivery rules:
 
 - Discord: respect `Retry-After` on 429; on 404 mark the channel `disabled` with reason `webhook_deleted`.
-- Telegram: on 403 (bot blocked) mark the channel `disabled`; on 429 respect `retry_after`.
 - Max 5 attempts with backoff (next tick, +5, +15, +30, +60 min), then `failed`. Failed deliveries are visible on the dashboard.
 
 How it runs (Phase 3):
@@ -187,7 +183,7 @@ Neon is the source of truth for monitor config; shards hold a copy.
 
 - Shared database, shared schema; every tenant-owned row is reachable from `projects.owner_id`. The API scopes every query by the authenticated user. See [ADR-0003](adr/0003-multi-tenancy.md).
 - Two Postgres roles: `pulse_api` (full access to app tables, used by Prisma) and `pulse_checker` (insert into `check_results`, `incidents`, `alert_deliveries`; select on `monitors`, `alert_channels`, `projects`; rollup and delete on history tables). The checker never touches `users` or `refresh_tokens`.
-- Alert secrets (Discord webhook URLs, Telegram chat ids) are encrypted with AES-256-GCM using a key that only the API and checker hold.
+- Alert secrets (Discord webhook URLs) are encrypted with AES-256-GCM using a key that only the API and checker hold.
 
 ## 5. Environments
 
@@ -210,7 +206,7 @@ Neon's serverless driver talks HTTP/WebSocket, not the Postgres wire protocol, s
 | Neon out of CU-hours     | No new history, no dashboard, incidents can't be written | Shards keep checking and keep buffering (up to 7 days of buffer fits easily in 1 GB); status pages show live state from shards plus the last snapshot; alerts still send from the shard state with an `incident_pending_db` marker |
 | Neon cold start (~1 s)   | Slower flush                                             | Driver retry with backoff                                                                                                                                                                                                          |
 | Checker tick overruns    | Skipped tick                                             | `tick_started_at` guard, logged to Sentry                                                                                                                                                                                          |
-| Discord/Telegram down    | Alerts delayed                                           | Outbox retries for up to ~2 hours                                                                                                                                                                                                  |
+| Discord down             | Alerts delayed                                           | Outbox retries for up to ~2 hours                                                                                                                                                                                                  |
 | Missed config sync       | Up to 1 hour stale config                                | Hourly reconcile                                                                                                                                                                                                                   |
 | Cloudflare cron incident | No checks                                                | Out of our control; documented. A future "watchdog" could check the last flush time from the API.                                                                                                                                  |
 
