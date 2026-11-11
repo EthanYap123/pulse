@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-11
+
+### Fixed
+
+- Production web deploys failed to build: `vercel pull` can't read the Secret `API_URL` and `CHECKER_URL` variables, so the deploy now takes them from the `production` GitHub environment.
+
+## [0.4.0] - 2026-11-11
+
+First production release.
+
 ### Removed
 
 - Telegram alerts dropped from v1.0. Discord is the only alert channel.

@@ -180,5 +180,18 @@ jobs:
       - uses: ./.github/actions/setup
       # Built here with the production variables from the Vercel project, then uploaded as is.
       - run: pnpm dlx vercel@65.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
+      # API_URL and CHECKER_URL are Secret variables on Vercel, and `vercel pull` can't read
+      # Secret values back. The rewrites are baked in at build time, so take the URLs from this
+      # GitHub environment instead.
+      - name: Use this environment's API and checker URLs
+        env:
+          API_URL: ${{ vars.API_URL }}
+          CHECKER_URL: ${{ vars.CHECKER_URL }}
+        run: |
+          [ -n "$API_URL" ] && [ -n "$CHECKER_URL" ] || { echo "::error::API_URL or CHECKER_URL unset"; exit 1; }
+          f=.vercel/.env.production.local
+          test -f "$f"
+          sed -i '/^API_URL=/d;/^CHECKER_URL=/d' "$f"
+          printf 'API_URL="%s"\nCHECKER_URL="%s"\n' "$API_URL" "$CHECKER_URL" >> "$f"
       - run: pnpm dlx vercel@65.3.1 build --prod --token="$VERCEL_TOKEN"
       - run: pnpm dlx vercel@65.3.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
