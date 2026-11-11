@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Rollback procedure for the whole release and for each host (Render, Cloudflare, Vercel, Neon) in `docs/DEPLOYMENT.md`, tried once on production. Measured Neon compute use recorded in `docs/COSTS.md`.
+
 ## [0.4.2] - 2026-11-11
 
 ### Fixed

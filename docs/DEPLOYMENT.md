@@ -112,6 +112,59 @@ The Vercel project builds `apps/web`. Next.js bakes the rewrites in at build tim
 
 Every PR gets a preview deployment, built against staging. Production deploys only from a release (see [Automatic deploys](#automatic-deploys)).
 
+## Rollback
+
+Roll back first and investigate after. Code can always go back; the database only goes forward (see [Database](#database)).
+
+### Whole release (preferred)
+
+Redeploy the previous release through the same workflow:
+
+1. **Actions > Deploy > Run workflow**, pick the previous tag (for example `v0.4.2`) under **Use workflow from**, and choose `production`.
+2. Or from a terminal: `gh workflow run deploy.yml --ref v0.4.2 -f environment=production`.
+
+The run reuses that tag's image, so nothing is rebuilt. `prisma migrate deploy` finds nothing to apply, because migrations only add (see [Automatic deploys](#automatic-deploys)). The API, checker and web app all go back, and the run fails if the API or checker `/health` doesn't report that commit. It takes about 3 minutes. Use the same command with the newer tag to roll forward again.
+
+The workflow runs as it was at that tag. **v0.4.2 is the oldest tag to roll back to this way:** the web job fails for v0.4.0 and v0.4.1 (fixed in #66 and #67). For those, use the per-host steps.
+
+If the workflow itself is broken, use the per-host steps below.
+
+### One host at a time
+
+| Host    | Roll back                                                                                                                                      | Took (drill) | Check                                     |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------- |
+| Render  | Service > **Deploys**, **Rollback** on an earlier deploy, then **Rollback to this deploy**                                                     | 20 s         | API `/health` reports the old `commit`    |
+| Checker | `npx wrangler deployments list --env production`, then `npx wrangler rollback <version-id> --env production -m "<reason>"` from `apps/checker` | 15 s         | Worker `/health` reports the old `commit` |
+| Vercel  | Project > **Deployments**, **...** on the previous production deployment, **Instant Rollback**                                                 | seconds      | The site serves the old build (see below) |
+
+Notes:
+
+- **Render:** a rollback redeploys the old image. The confirm screen lists any configuration changes it would also revert. The next deploy hook call (the next release) replaces it as normal.
+- **Checker:** a rollback keeps the current secrets. Durable Object storage is shared by all versions, so buffered results are kept, and the hourly job keeps running.
+- **Vercel:** Hobby can only roll back to the deployment right before the current one. After an Instant Rollback, Vercel **stops moving the production domain to new deployments**. A later deploy (a release or a workflow run) still succeeds, but the old site stays live. To undo it, open the project overview, click **Manage** on the rollback banner and promote the newest deployment. Do this as part of every roll-forward, then check that the site changed: the `Age` header on `curl -sI https://pulse-eta-sage.vercel.app/` drops to 0 and the page loads different `/_next/static/` files.
+
+### Rollback drill (2026-11-11)
+
+Carried out on production after releasing v0.4.2 (`f85ed21`):
+
+1. Rolled the checker (`wrangler rollback`), API (Render dashboard) and web (Vercel Instant Rollback) back one version. The API and checker `/health` reported `6a6d0e2` (v0.4.1); the web domain served the previous Vercel build.
+2. Rolled forward with `gh workflow run deploy.yml --ref v0.4.2 -f environment=production` (2 min 52 s, all jobs green). The API and checker reported `f85ed21` again, but the web domain still served the rolled-back build, as described above, until the rollback was undone in Vercel.
+3. The production checker's 16:00 UTC hourly tick ran between the rollback and the roll-forward with no errors.
+
+### Database
+
+Never roll the schema back with a down migration. Instead:
+
+- **Bad code, good data:** roll back the code as above. Old code works with the newer schema because migrations only add.
+- **Bad migration or bad data:** ship a new migration that fixes it forward.
+- **Data lost or corrupted:** Neon **Backup & Restore** restores the `production` branch to any point in the last **6 hours** (Free plan). Neon keeps the pre-restore state as a backup branch, and connection strings don't change. Delete the backup branch afterwards, because Free allows 10 branches per project. Restoring loses every write after the chosen time, including check results the checker flushed, so pick the latest safe moment.
+
+### After a rollback
+
+1. Check `/health` and `/health/db` on the API and `/health` on the checker.
+2. Open the status page and dashboard.
+3. Open an issue for the cause, fix it on `main`, let staging deploy it, then publish a new release.
+
 ## Database migrations
 
 Migrations run separately from the API, against the Neon **direct** (not pooled) connection string:
