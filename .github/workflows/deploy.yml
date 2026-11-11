@@ -193,5 +193,7 @@ jobs:
           test -f "$f"
           sed -i '/^API_URL=/d;/^CHECKER_URL=/d' "$f"
           printf 'API_URL="%s"\nCHECKER_URL="%s"\n' "$API_URL" "$CHECKER_URL" >> "$f"
+      # `vercel build` runs only `next build`, so build the workspace package it imports first.
+      - run: pnpm turbo run build --filter=@pulse/shared
       - run: pnpm dlx vercel@65.3.1 build --prod --token="$VERCEL_TOKEN"
       - run: pnpm dlx vercel@65.3.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"

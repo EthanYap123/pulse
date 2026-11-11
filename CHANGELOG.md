@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-11
+
+### Fixed
+
+- Production web deploys failed with `Can't resolve '@pulse/shared'`: `vercel build` runs only `next build`, so the deploy now builds the shared package first.
+
 ## [0.4.1] - 2026-11-11
 
 ### Fixed
