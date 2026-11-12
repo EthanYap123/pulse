@@ -149,7 +149,11 @@ Carried out on production after releasing v0.4.2 (`f85ed21`):
 
 1. Rolled the checker (`wrangler rollback`), API (Render dashboard) and web (Vercel Instant Rollback) back one version. The API and checker `/health` reported `6a6d0e2` (v0.4.1); the web domain served the previous Vercel build.
 2. Rolled forward with `gh workflow run deploy.yml --ref v0.4.2 -f environment=production` (2 min 52 s, all jobs green). The API and checker reported `f85ed21` again, but the web domain still served the rolled-back build, as described above, until the rollback was undone in Vercel.
-3. The production checker's 16:00 UTC hourly tick ran between the rollback and the roll-forward with no errors.
+3. The production checker's 16:00 UTC hourly tick ran between the rollback and the roll-forward with no errors: all five shards flushed and `hourly maintenance` finished its rollups and retention against Neon. Production had no monitors yet, so it moved no rows.
+
+### Hourly job with real data (2026-11-12)
+
+Two monitors were added to production at 16:31 UTC on 2026-11-11. The next morning, the 7-day chart (which reads only `check_rollups_hourly` in Neon) showed hourly points through the night with 100% uptime, and the 24-hour chart showed checks every 5 minutes from 16:35 UTC. So the minute-0 flush, the hourly rollups and the retention step all work on Neon with real data.
 
 ### Database
 
