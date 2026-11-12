@@ -80,6 +80,10 @@ So the checker **buffers results in Durable Objects** and wakes Neon only:
 | CI migrations and deploys                    | ~20 / month           | ~5 min                           | ~0.4             |
 | **Total**                                    |                       |                                  | **~48 of 100**   |
 
+**Measured 2026-11-11 (issue #59):** the Neon branches page showed **2.15 CU-hours** used by `production` and **2.68** by `staging` since the branches were created on 2026-11-06. Both checkers have run since 2026-11-08, and the total includes setup, migrations and manual testing. That's about 0.9 CU-hours a day, or ~27 a month, under the ~48 budgeted (no dashboard use yet). The project's compute was last active at 15:00 UTC, the hourly flush, so the checkers let Neon suspend between flushes as designed. Re-measure once real monitors and dashboard users exist.
+
+Both computes are set to autoscale between 0.25 and 2 CU, not pinned to 0.25 as planned above. A busy minute could bill up to 8x the budgeted rate, so set the maximum to 0.25 CU on both branches (**Branches > compute > Edit**).
+
 The staging checker can be paused (its cron trigger removed) when staging isn't being tested, which frees ~15 CU-hours. Public status pages **never** wake Neon: they are served from snapshots held in the Worker (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 
 ### Storage budget (1 GB)
@@ -128,7 +132,7 @@ Source: [Render free instances](https://render.com/docs/free), [Deploying an ima
 | Outbound ports            | 25, 465, 587 blocked                                                                       | No email; alerts use HTTPS (Discord).                                                      |
 | Bandwidth / build minutes | Workspace allowance; without a card, services are **suspended** (not billed) when exceeded | Images are built in GitHub Actions, not on Render, so Render build minutes stay near zero. |
 | Prebuilt images           | Image-backed services deploy via a **deploy hook** (no auto-redeploy on new tag)           | CD calls the deploy hook with the new GHCR tag.                                            |
-| Rollback                  | To the two most recent previous deploys                                                    | Documented in Phase 4.                                                                     |
+| Rollback                  | Dashboard rollback to an earlier deploy                                                    | Tried 2026-11-11 (20 s). See the rollback section of DEPLOYMENT.md.                        |
 
 ## Sentry (Developer, free)
 
