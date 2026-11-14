@@ -12,6 +12,7 @@ import type { CheckerClient } from "../checker-client.js";
 import { AppError, notFound } from "../errors.js";
 import type { Repositories } from "../repositories/index.js";
 import type { CapExceeded } from "../repositories/monitors.js";
+import { assertPublicHost, type LookupHost } from "../resolve.js";
 import { idParam } from "./params.js";
 
 type MonitorRow = NonNullable<Awaited<ReturnType<Repositories["monitors"]["get"]>>>;
@@ -85,6 +86,7 @@ export function monitorRoutes(
   app: FastifyInstance,
   repos: Repositories,
   checker: CheckerClient | null,
+  lookupHost: LookupHost,
 ): void {
   async function withLive(rows: MonitorRow[]) {
     const live = checker
@@ -120,6 +122,7 @@ export function monitorRoutes(
   app.post("/v1/projects/:projectId/monitors", async (request, reply) => {
     const projectId = idParam(request.params, "projectId");
     const input = monitorInputSchema.parse(request.body);
+    await assertPublicHost(input.url, lookupHost);
     const result = await repos.monitors.create(request.userId, projectId, input);
     if (result.kind === "not_found") throw notFound();
     if (result.kind === "limit_reached") throw capError(result);
@@ -171,6 +174,7 @@ export function monitorRoutes(
   app.patch("/v1/monitors/:monitorId", async (request) => {
     const id = idParam(request.params, "monitorId");
     const patch = monitorPatchSchema.parse(request.body);
+    if (patch.url !== undefined) await assertPublicHost(patch.url, lookupHost);
     const result = await repos.monitors.update(request.userId, id, patch);
     if (result.kind === "not_found") throw notFound();
     await sync(request.userId, id);

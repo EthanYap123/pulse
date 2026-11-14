@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { testConfig } from "./helpers/config.js";
+import { fakeLookup } from "./helpers/dns.js";
 import { createTestPrisma, resetDb } from "./helpers/db.js";
 import { signUp, type Session } from "./helpers/session.js";
 
 const prisma = createTestPrisma();
-const app = buildApp({ prisma, config: testConfig });
+const app = buildApp({ prisma, config: testConfig, lookupHost: fakeLookup });
 
 let alice: Session;
 let projectId: string;

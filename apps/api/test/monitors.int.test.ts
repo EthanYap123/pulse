@@ -3,11 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createCipher } from "../src/crypto.js";
 import { testConfig } from "./helpers/config.js";
+import { fakeLookup, MISSING_HOST, PRIVATE_HOST } from "./helpers/dns.js";
 import { createTestPrisma, resetDb } from "./helpers/db.js";
 import { signUp, type Session } from "./helpers/session.js";
 
 const prisma = createTestPrisma();
-const app = buildApp({ prisma, config: testConfig });
+const app = buildApp({ prisma, config: testConfig, lookupHost: fakeLookup });
 
 let alice: Session;
 let bob: Session;
@@ -129,6 +130,34 @@ describe("monitors", () => {
       payload: { url: "http://127.0.0.1/admin" },
     });
     expect(res.statusCode).toBe(422);
+  });
+
+  it("rejects a hostname that resolves to a private address", async () => {
+    const res = await createMonitor(alice, aliceProject, { url: `https://${PRIVATE_HOST}/` });
+    expect(res.statusCode).toBe(422);
+    const body = res.json<{ errors: { path: string; message: string }[] }>();
+    expect(body.errors[0]?.path).toBe("url");
+    expect(body.errors[0]?.message).toMatch(/private/);
+    expect(await prisma.monitor.count()).toBe(0);
+  });
+
+  it("rejects a hostname that doesn't resolve", async () => {
+    const res = await createMonitor(alice, aliceProject, { url: `https://${MISSING_HOST}/` });
+    expect(res.statusCode).toBe(422);
+    const body = res.json<{ errors: { path: string; message: string }[] }>();
+    expect(body.errors[0]?.message).toMatch(/couldn't find/);
+  });
+
+  it("checks the hostname again when the URL changes", async () => {
+    const { id } = (await createMonitor(alice, aliceProject)).json<Monitor>();
+    const res = await alice.request({
+      method: "PATCH",
+      url: `/v1/monitors/${id}`,
+      payload: { url: `https://${PRIVATE_HOST}/health` },
+    });
+    expect(res.statusCode).toBe(422);
+    const stored = await prisma.monitor.findUniqueOrThrow({ where: { id } });
+    expect(stored.url).toBe("https://example.com/");
   });
 
   it("encrypts header values and only returns their names", async () => {

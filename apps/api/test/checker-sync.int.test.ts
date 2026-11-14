@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { CheckerClient } from "../src/checker-client.js";
 import { testConfig } from "./helpers/config.js";
+import { fakeLookup } from "./helpers/dns.js";
 import { createTestPrisma, resetDb } from "./helpers/db.js";
 import { signUp, type Session } from "./helpers/session.js";
 
@@ -47,7 +48,12 @@ function fakeChecker() {
 
 const prisma = createTestPrisma();
 const checker = fakeChecker();
-const app = buildApp({ prisma, config: testConfig, checker: checker.client });
+const app = buildApp({
+  prisma,
+  config: testConfig,
+  lookupHost: fakeLookup,
+  checker: checker.client,
+});
 
 let alice: Session;
 let projectId: string;

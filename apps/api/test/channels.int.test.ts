@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { buildApp } from "../src/app.js";
 import { createCipher } from "../src/crypto.js";
 import { testConfig } from "./helpers/config.js";
+import { fakeLookup } from "./helpers/dns.js";
 import { createTestPrisma, resetDb } from "./helpers/db.js";
 import { signUp, type Session } from "./helpers/session.js";
 
@@ -18,6 +19,7 @@ const alertFetch = vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
 const app = buildApp({
   prisma,
   config: testConfig,
+  lookupHost: fakeLookup,
   alertFetch,
 });
 

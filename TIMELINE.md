@@ -1,6 +1,6 @@
 # Pulse Timeline
 
-Last updated: 2026-11-11
+Last updated: 2026-11-14
 
 Each phase is a GitHub milestone. v1.0.0 is tagged at the end of Phase 6.
 
@@ -54,13 +54,13 @@ Pulse online on free tiers, with automatic deploys to staging and production and
 - [x] Part 4: Automatic deploys from GitHub Actions (#58)
 - [x] Part 5: Rollback procedure, first production release and live verification (#59, #66, #67)
 
-## ⬜ Phase 5: Hardening & testing
+## 🔨 Phase 5: Hardening & testing
 
 Security hardening, load testing and end-to-end tests.
 
-- [ ] Part 1: SSRF hardening with DNS checks for monitor URLs
-- [ ] Part 2: k6 load test of the warm API (p95 under 300 ms)
-- [ ] Part 3: Playwright E2E for sign-up to live status page
+- [x] Part 1: SSRF hardening with DNS checks for monitor URLs (#69)
+- [ ] Part 2: k6 load test of the warm API (p95 under 300 ms) (#70)
+- [ ] Part 3: Playwright E2E for sign-up to live status page (#71)
 
 ## ⬜ Phase 6: v1.0 release
 

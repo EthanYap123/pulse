@@ -63,7 +63,7 @@ IDs are referenced from issues and tests. "Must" stories are v1.0; "Should" stor
 **US-04 (Must) Add a monitor.** As a solo developer, I want to add an HTTP(S) URL to check so I learn when it stops responding.
 
 - Fields: name, URL, method (`GET` or `HEAD`), expected status range (default 200-399), timeout (1-8 s, default 8), failure threshold (1-5, default 3), optional request headers (max 5).
-- Only `http`/`https` URLs to public hosts are accepted. `localhost`, private, loopback, link-local and metadata IP ranges are rejected (SSRF protection, hardened in Phase 5).
+- Only `http`/`https` URLs to public hosts are accepted. `localhost`, private, loopback, link-local and metadata IP ranges are rejected, and so are hostnames that resolve to them (SSRF protection, see ARCHITECTURE.md 3.7).
 - A user can have at most 10 monitors; when the global cap (200) is reached, creation is refused with a message saying so.
 - The first check runs within 5 minutes of creation.
 
