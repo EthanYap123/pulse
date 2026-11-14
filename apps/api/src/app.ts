@@ -7,6 +7,7 @@ import { createCipher } from "./crypto.js";
 import type { PrismaClient } from "./db.js";
 import { registerErrorHandling } from "./errors.js";
 import { createRepositories } from "./repositories/index.js";
+import { dnsLookup, type LookupHost } from "./resolve.js";
 import { authRoutes } from "./routes/auth.js";
 import { channelRoutes } from "./routes/channels.js";
 import { incidentRoutes } from "./routes/incidents.js";
@@ -21,6 +22,8 @@ export type AppOptions = {
   checker?: CheckerClient | null;
   /** Outbound fetch for alert test messages (tests pass a fake). */
   alertFetch?: typeof fetch;
+  /** Hostname lookup for the monitor URL check (tests pass a fake). */
+  lookupHost?: LookupHost;
 };
 
 export function buildApp({
@@ -66,7 +69,7 @@ export function buildApp({
   void app.register((scope, _opts, done) => {
     scope.addHook("preHandler", requireAuth(config.jwtSecret));
     projectRoutes(scope, repos, checker);
-    monitorRoutes(scope, repos, checker);
+    monitorRoutes(scope, repos, checker, options.lookupHost ?? dnsLookup);
     incidentRoutes(scope, repos, checker);
     channelRoutes(scope, repos, options.alertFetch ?? ((input, init) => fetch(input, init)));
     done();

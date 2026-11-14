@@ -179,6 +179,16 @@ Neon is the source of truth for monitor config; shards hold a copy.
 - When the API creates, updates, pauses or deletes a monitor, it calls `POST /internal/v1/monitors/sync` on the checker with the monitor's config, signed with an HMAC-SHA256 shared secret and a timestamp (rejected if older than 5 minutes). The checker routes it to the right shard.
 - If that call fails, the API still succeeds; the hourly reconcile (3.5 step 3) fixes it within the hour, and the dashboard shows "pending sync".
 
+### 3.7 Which URLs can be checked (SSRF)
+
+A monitor makes Pulse send requests to a URL its owner chose, so the URL must not point inside a private network. Three layers stop that:
+
+1. **URL text** (`checkMonitorUrl` in `packages/shared`, run by the API's zod schema): only `http`/`https`, no credentials, no `localhost` or `.local`/`.internal`-style names, no single-label hosts, and no IP literals in private, loopback, link-local (including the `169.254.169.254` metadata address), carrier-grade NAT, multicast, reserved or documentation ranges. The URL parser normalises tricks like `http://2130706433` and `http://[::ffff:127.0.0.1]` first.
+2. **DNS** (`assertPublicHost` in `apps/api/src/resolve.ts`): when a monitor is created or its URL changes, the API resolves the hostname and rejects it if **any** address fails `isBlockedAddress`. A hostname that doesn't resolve is rejected too, with a different message. The lookup times out after 5 s.
+3. **Where checks run:** checks run on Cloudflare Workers, whose `fetch` only reaches the public internet. A hostname that passes step 2 and is later pointed at a private address (DNS rebinding) still can't reach anything private.
+
+The checker doesn't resolve hostnames again before each check: a DNS-over-HTTPS lookup would cost a subrequest per check, halving the checks a shard can run per tick (see COSTS.md), for no gain over step 3. Redirects aren't followed (3.2), so a public URL can't bounce a check to a private one either.
+
 ## 4. Multi-tenancy and data access
 
 - Shared database, shared schema; every tenant-owned row is reachable from `projects.owner_id`. The API scopes every query by the authenticated user. See [ADR-0003](adr/0003-multi-tenancy.md).

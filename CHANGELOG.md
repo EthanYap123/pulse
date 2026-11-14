@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Monitor URLs whose hostnames resolve to private, loopback, link-local or metadata addresses are rejected when a monitor is created or its URL changes. Documentation, 6to4 and IPv4-compatible ranges are now blocked too. See `docs/ARCHITECTURE.md` 3.7.
+
 ### Added
 
 - Rollback procedure for the whole release and for each host (Render, Cloudflare, Vercel, Neon) in `docs/DEPLOYMENT.md`, tried once on production. Measured Neon compute use recorded in `docs/COSTS.md`.

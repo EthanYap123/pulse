@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkMonitorUrl } from "./url.js";
+import { checkMonitorUrl, isBlockedAddress } from "./url.js";
 
 const allowed = [
   "https://example.com",
@@ -39,6 +39,13 @@ const blocked = [
   "http://[::ffff:127.0.0.1]",
   "http://[::ffff:10.0.0.1]",
   "http://[64:ff9b::7f00:1]",
+  "http://192.0.2.10", // documentation ranges
+  "http://198.51.100.7",
+  "http://203.0.113.200",
+  "http://[2001:db8::1]",
+  "http://[2002:a00:1::1]", // 6to4 wrapping 10.0.0.1
+  "http://[::a00:1]", // IPv4-compatible 10.0.0.1
+  "http://[100::1]",
 ];
 
 describe("checkMonitorUrl", () => {
@@ -76,5 +83,37 @@ describe("checkMonitorUrl", () => {
       ok: true,
       url: "https://example.com/",
     });
+  });
+});
+
+describe("isBlockedAddress", () => {
+  it.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2a00:1450:4001:80b::200e"])(
+    "allows public %s",
+    (address) => {
+      expect(isBlockedAddress(address)).toBe(false);
+    },
+  );
+
+  it.each([
+    "127.0.0.1",
+    "10.1.2.3",
+    "172.20.0.1",
+    "192.168.0.10",
+    "169.254.169.254",
+    "100.100.100.200",
+    "0.0.0.0",
+    "::1",
+    "::",
+    "fe80::1%eth0", // zone IDs are ignored
+    "fd00:ec2::254", // AWS IPv6 metadata
+    "::ffff:169.254.169.254", // dotted IPv4 tail
+    "::ffff:a9fe:a9fe",
+    "[::1]",
+  ])("blocks %s", (address) => {
+    expect(isBlockedAddress(address)).toBe(true);
+  });
+
+  it.each(["", "not-an-ip", "999.1.1.1", "1.2.3", "gggg::1"])("blocks invalid %j", (address) => {
+    expect(isBlockedAddress(address)).toBe(true);
   });
 });

@@ -103,7 +103,7 @@ type Project = {
 ```ts
 type MonitorInput = {
   name: string; // 1-60 chars
-  url: string; // http(s), public host only
+  url: string; // http(s), public host only; the hostname must resolve to public addresses
   method?: "GET" | "HEAD"; // default GET
   expectedStatus?: { min: number; max: number }; // default 200-399
   timeoutMs?: number; // 1000-8000, default 8000

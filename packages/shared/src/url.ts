@@ -1,7 +1,8 @@
 /**
- * First line of SSRF defence: only public http(s) URLs can be monitored. Hostnames that
- * resolve to private addresses are handled in Phase 5 (DNS checks); the checker also runs
- * on Cloudflare, which can't reach private networks.
+ * SSRF defence for monitor URLs. `checkMonitorUrl` checks the URL text: only public http(s)
+ * URLs pass. The API then resolves the hostname and rejects it if any address fails
+ * `isBlockedAddress` (apps/api/src/resolve.ts). The checker runs on Cloudflare, which can't
+ * reach private networks, so it doesn't resolve again on every check (docs/ARCHITECTURE.md).
  */
 
 export type UrlCheck = { ok: true; url: string } | { ok: false; reason: string };
@@ -17,8 +18,11 @@ const BLOCKED_V4: [number, number][] = [
   [ip4(169, 254, 0, 0), 16], // link-local, including cloud metadata (169.254.169.254)
   [ip4(172, 16, 0, 0), 12], // private
   [ip4(192, 0, 0, 0), 24], // IETF protocol assignments
+  [ip4(192, 0, 2, 0), 24], // documentation (TEST-NET-1)
   [ip4(192, 168, 0, 0), 16], // private
   [ip4(198, 18, 0, 0), 15], // benchmarking
+  [ip4(198, 51, 100, 0), 24], // documentation (TEST-NET-2)
+  [ip4(203, 0, 113, 0), 24], // documentation (TEST-NET-3)
   [ip4(224, 0, 0, 0), 4], // multicast
   [ip4(240, 0, 0, 0), 4], // reserved, including broadcast
 ];
@@ -64,11 +68,37 @@ function isBlockedIPv6(g: number[]): boolean {
   if ((g0 & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
   if ((g0 & 0xff00) === 0xff00) return true; // multicast ff00::/8
   const embeddedV4 = ((g6 << 16) | g7) >>> 0;
+  if (allZeroBefore(6)) return isBlockedIPv4(embeddedV4); // IPv4-compatible ::a.b.c.d
   if (allZeroBefore(5) && g5 === 0xffff) return isBlockedIPv4(embeddedV4); // ::ffff:a.b.c.d
   if (g0 === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return isBlockedIPv4(embeddedV4); // NAT64 64:ff9b::a.b.c.d
   }
+  if (g0 === 0x2002) return isBlockedIPv4((((g[1] ?? 0) << 16) | (g[2] ?? 0)) >>> 0); // 6to4
+  if (g0 === 0x2001 && g[1] === 0xdb8) return true; // documentation 2001:db8::/32
+  if (g0 === 0x100 && g.slice(1, 4).every((x) => x === 0)) return true; // discard 100::/64
   return false;
+}
+
+/**
+ * True if a resolved address must never be checked: private, loopback, link-local, metadata,
+ * multicast, reserved or documentation ranges. Anything that isn't a valid IP is blocked too.
+ */
+export function isBlockedAddress(address: string): boolean {
+  const host = address.trim().replace(/^[|]$/g, "").replace(/%.*$/, "");
+  const v4 = parseIPv4(host);
+  if (v4 !== null) return isBlockedIPv4(v4);
+  const v6 = parseIPv6(expandEmbeddedV4(host));
+  if (v6 !== null) return isBlockedIPv6(v6);
+  return true;
+}
+
+/** Rewrites a dotted IPv4 tail (::ffff:10.0.0.1) as two hex groups, as the URL parser does. */
+function expandEmbeddedV4(host: string): string {
+  const match = /^(.*:)(d{1,3}(?:.d{1,3}){3})$/.exec(host);
+  if (!match) return host;
+  const v4 = parseIPv4(match[2] ?? "");
+  if (v4 === null) return host;
+  return `${match[1] ?? ""}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
 }
 
 export function checkMonitorUrl(raw: string): UrlCheck {
