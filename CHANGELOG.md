@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- k6 load test for the dashboard API (`load/dashboard.js`) with results in `docs/PERFORMANCE.md`. All read endpoints meet the 300 ms p95 target except the two that fetch live status from the checker (#73).
 - Rollback procedure for the whole release and for each host (Render, Cloudflare, Vercel, Neon) in `docs/DEPLOYMENT.md`, tried once on production. Measured Neon compute use recorded in `docs/COSTS.md`.
 
 ## [0.4.2] - 2026-11-11
