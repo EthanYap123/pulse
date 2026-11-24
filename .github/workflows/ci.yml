@@ -79,6 +79,42 @@ jobs:
             apps/checker/coverage
           if-no-files-found: ignore
 
+  e2e:
+    name: E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        # Same image and credentials as docker-compose.yml. The suite creates its own database.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pulse
+          POSTGRES_PASSWORD: pulse
+          POSTGRES_DB: pulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pulse -d pulse"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql://pulse:pulse@localhost:5432/pulse_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo run build --filter=@pulse/shared --filter=@pulse/api
+      - run: pnpm --filter @pulse/e2e exec playwright install --with-deps --only-shell chromium
+      - run: pnpm --filter @pulse/e2e test:e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          if-no-files-found: ignore
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -135,7 +171,7 @@ jobs:
   ci-ok:
     name: CI passed
     if: always()
-    needs: [quality, test, integration, build, docker, secrets]
+    needs: [quality, test, integration, e2e, build, docker, secrets]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any job failed or was cancelled

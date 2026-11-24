@@ -29,6 +29,12 @@
       "env": ["DATABASE_URL", "TEST_DATABASE_URL"],
       "outputs": ["coverage/**"]
     },
+    "test:e2e": {
+      "dependsOn": ["@pulse/shared#build", "@pulse/api#build"],
+      "cache": false,
+      "env": ["E2E_DATABASE_URL"],
+      "passThroughEnv": ["CI", "PLAYWRIGHT_BROWSERS_PATH"]
+    },
     "test:integration": {
       "dependsOn": ["^build", "generate"],
       "cache": false,

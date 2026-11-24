@@ -29,6 +29,7 @@ coverage/
 # Test output
 playwright-report/
 test-results/
+e2e/.checker/
 
 # OS / editor
 .DS_Store

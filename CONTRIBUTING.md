@@ -35,7 +35,7 @@ Pulse is built in phases (see the GitHub milestones). Every change goes through 
    Scopes are optional; use the app or package name (`api`, `checker`, `web`, `shared`) when it helps.
 
 4. **Open a PR** using the template. Reference the issue with `Closes #N`, explain how you tested it, and update `docs/` and `CHANGELOG.md` (under `[Unreleased]`) when behaviour, limits or setup change.
-5. **CI must pass.** The `CI passed` check covers lint, format, typecheck, unit and integration tests, build, the API Docker image and gitleaks.
+5. **CI must pass.** The `CI passed` check covers lint, format, typecheck, unit, integration and E2E tests, build, the API Docker image and gitleaks.
 6. **Squash-merge** and delete the branch. The PR title becomes the commit on `main`, so it must be a valid Conventional Commit too.
 
 ## Checks you can run before pushing
@@ -47,10 +47,21 @@ pnpm typecheck
 pnpm test
 pnpm test:integration   # needs Postgres (docker compose up -d)
 pnpm test:coverage      # unit + integration with coverage thresholds (needs Postgres)
+pnpm test:e2e           # Playwright against the built stack (see below)
 pnpm build
 ```
 
 The `pre-commit` hook runs ESLint and Prettier on staged files only.
+
+## E2E tests
+
+`pnpm test:e2e` drives the real UI with Playwright (`e2e/`). It builds and starts the API, the checker Worker and the web app on their own ports (4100, 8887, 3100), and drops and recreates a local `pulse_e2e` database on every run, so it never touches dev data or a hosted environment. It needs Postgres (`docker compose up -d`) and, once, `pnpm --filter @pulse/e2e exec playwright install --only-shell chromium`.
+
+- Checks run when a test calls `tick()` (one cron tick) or `hourlyTick()` (flush, rollups and snapshots), not on a timer.
+- Monitors point at `example.com`, so a run needs internet access. Private addresses are refused by design (ARCHITECTURE.md 3.7), so there is no local target.
+- To run one test: `pnpm test:e2e -- -g "outage"`. Failures leave a trace in `e2e/test-results`, and CI uploads it as `playwright-report`.
+
+The run rebuilds `apps/web/.next` against the E2E API. Run `pnpm build` again before using `pnpm start` there.
 
 ## Coverage
 
@@ -61,7 +72,7 @@ CI fails if coverage drops below these (statements, branches, functions, lines):
 | `packages/shared` | 80%                | everything                                                                       |
 | `apps/api`        | 90% (branches 85%) | unit + integration tests; `server.ts` excluded                                   |
 | `apps/checker`    | 85%                | unit + integration tests; Cloudflare-only glue (`shard.ts`, `index.ts`) excluded |
-| `apps/web`        | 80%                | `src/lib` (pages and components are covered by Phase 5 E2E tests)                |
+| `apps/web`        | 80%                | `src/lib` (pages and components are covered by the E2E tests)                    |
 
 Reports are uploaded as the `coverage-unit` and `coverage-integration` artifacts on every CI run.
 
