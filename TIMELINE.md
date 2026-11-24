@@ -1,6 +1,6 @@
 # Pulse Timeline
 
-Last updated: 2026-11-15
+Last updated: 2026-11-25
 
 Each phase is a GitHub milestone. v1.0.0 is tagged at the end of Phase 6.
 
@@ -60,9 +60,10 @@ Security hardening, load testing and end-to-end tests.
 
 - [x] Part 1: SSRF hardening with DNS checks for monitor URLs (#69)
 - [x] Part 2: k6 load test of the warm API (p95 under 300 ms) (#70)
-- [ ] Part 3: Playwright E2E for sign-up to live status page (#71)
+- [x] Part 3: Playwright E2E for sign-up to live status page (#71)
 - [ ] Part 4: Bring the monitor endpoints under 300 ms p95 (#73)
 - [ ] Part 5: Rate limits on auth and writes (#74)
+- [ ] Part 6: Stale status pages, sign-out redirect and security upgrades (#76, #77, #78)
 
 ## ⬜ Phase 6: v1.0 release
 

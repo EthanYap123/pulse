@@ -66,7 +66,7 @@ flowchart LR
 
 ### Public status page
 
-1. `GET /status/<slug>` is a Next.js server component cached on demand (ISR, `revalidate: 60`, with an empty `generateStaticParams` so Next treats it as cacheable). Most visits run no code at all: measured locally, 10 visits caused 1 request to the checker. It sits outside the `(app)` route group, so nothing on it signs in or calls the API.
+1. `GET /status/<slug>` is a Next.js server component cached on demand (ISR, `revalidate: 60`, with an empty `generateStaticParams` so Next treats it as cacheable). Most visits run no code at all: measured locally, 10 visits caused 1 request to the checker. It sits outside the `(app)` route group, so nothing on it signs in or calls the API. ISR serves the old copy once more after 60 s while it builds a new one, so the first visitor to a quiet page can see older status ([#76](https://github.com/EthanYap123/pulse/issues/76)).
 2. It fetches **one JSON document** from the checker: `GET /public/v1/status/<slug>`. That document merges the hourly snapshot (90-day bars, incidents) with each monitor's live state from the shards.
 3. Neither the API nor Neon is on this path, so the page stays fast and available when Render is cold or Neon is asleep or out of compute.
 
